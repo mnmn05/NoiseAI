@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NoiseAI 마이크 측정</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px; max-width: 480px; margin-inline: auto;
+         font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif;
+         background: #0f172a; color: #e2e8f0; }
+  h1 { font-size: 20px; margin: 4px 0 16px; }
+  .card { background: #1e293b; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .big { text-align: center; }
+  #db { font-size: 72px; font-weight: 700; line-height: 1; }
+  .unit { color: #94a3b8; margin-top: 4px; }
+  .sub { color: #94a3b8; font-size: 13px; margin-top: 8px; }
+  .bar { height: 10px; background: #334155; border-radius: 6px; overflow: hidden; margin: 14px 0; }
+  #bar { height: 100%; width: 0; background: #22c55e; transition: width .15s, background .3s; }
+  button { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; border: 0;
+           border-radius: 12px; background: #3b82f6; color: #fff; cursor: pointer; }
+  button.stop { background: #ef4444; }
+  button.sec { background: #475569; margin-top: 10px; }
+  input { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid #475569;
+          background: #0f172a; color: #e2e8f0; }
+  label { font-size: 14px; color: #cbd5e1; display: block; margin-bottom: 8px; }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+  #error { color: #fca5a5; font-size: 14px; margin-bottom: 12px; white-space: pre-line; }
+</style>
+</head>
+<body>
+<h1>🎤 매장 소음 측정</h1>
+
+<div id="error"></div>
+
+<div class="card big">
+  <div id="db">--</div>
+  <div class="unit">dB (보정된 상대값)</div>
+  <div class="sub">원본 dBFS: <span id="dbfs">--</span></div>
+  <div class="bar"><div id="bar"></div></div>
+</div>
+
+<button id="toggle">측정 시작</button>
+
+<div class="card" style="margin-top:14px">
+  <label for="ref">보정: 소음계 앱에 표시된 dB 값을 입력하고 버튼을 누르세요</label>
+  <input id="ref" type="number" inputmode="decimal" placeholder="예: 45">
+  <button id="calib" class="sec">지금 소리 = 입력한 dB 로 보정</button>
+  <div class="sub">현재 보정값(offset): <span id="offset"></span> · 보정 안 하면 기본값 사용</div>
+</div>
+
+<div class="card">
+  <div class="row"><span>서버 전송</span><span id="sendStatus">-</span></div>
+  <div class="row"><span>서버 혼잡도</span><span id="level">-</span></div>
+  <div class="row"><span>서버 볼륨</span><span id="vol">-</span></div>
+  <div class="row"><span>소음 출처</span><span id="source">-</span></div>
+</div>
+
+<script>
+const API = location.origin;          // 이 페이지는 백엔드가 직접 서빙하므로 같은 주소를 그대로 쓴다
+const OFFSET_KEY = "noiseai_offset";
+const SEND_MS = 1000;                 // 서버로 1초마다 전송
+const SAMPLE_MS = 100;                // 화면은 0.1초마다 갱신
+
+const $ = id => document.getElementById(id);
+let offset = 90;                      // dBFS(-90~0) -> 대략적인 dB(0~90) 로 옮기는 기본값
+try { const v = parseFloat(localStorage.getItem(OFFSET_KEY)); if (!isNaN(v)) offset = v; } catch (e) {}
+$("offset").textContent = offset.toFixed(1);
+
+let stream, ctx, analyser, buf, sampleTimer, sendTimer, pollTimer, wakeLock;
+let powers = [];                      // 최근 1초 동안의 파워(rms^2) 샘플
+let lastDbfs = -90;                   // 최근 1초 평균 dBFS (보정 때 사용)
+let running = false;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const powerToDb = p => 10 * Math.log10(Math.max(p, 1e-12));
+
+function showError(msg) { $("error").textContent = msg || ""; }
+
+function sample() {
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+  const p = sum / buf.length;         // rms^2
+  powers.push(p);
+  const db = clamp(powerToDb(p) + offset, 0, 140);
+  $("db").textContent = db.toFixed(0);
+  $("dbfs").textContent = powerToDb(p).toFixed(1);
+  const pct = clamp((db - 30) / 70 * 100, 0, 100);
+  $("bar").style.width = pct + "%";
+  $("bar").style.background = db >= 70 ? "#ef4444" : db >= 55 ? "#f59e0b" : "#22c55e";
+}
+
+async function send() {
+  if (powers.length === 0) return;
+  const avgPower = powers.reduce((a, b) => a + b, 0) / powers.length;   // 1초 평균(에너지 평균)
+  powers = [];
+  lastDbfs = powerToDb(avgPower);
+  const noiseDb = Math.round(clamp(lastDbfs + offset, 0, 140) * 10) / 10;
+  try {
+    const res = await fetch(API + "/api/update-noise", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ noise_db: noiseDb }),
+    });
+    $("sendStatus").textContent = res.ok ? ("OK · " + noiseDb + " dB") : ("오류 " + res.status);
+  } catch (e) {
+    $("sendStatus").textContent = "서버 연결 실패";
+  }
+}
+
+async function pollStatus() {
+  try {
+    const s = await (await fetch(API + "/api/status")).json();
+    $("level").textContent = s.crowd_level;
+    $("vol").textContent = s.current_volume;
+    $("source").textContent = s.noise_source;
+  } catch (e) {}
+}
+
+async function start() {
+  showError("");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError("이 주소에서는 마이크를 쓸 수 없습니다.\nHTTPS 주소(Render) 또는 localhost 로 접속하세요.");
+    return;
+  }
+  try {
+    // 브라우저 기본 음성 처리를 끄지 않으면 소음이 깎여서 dB 가 실제보다 작게 측정된다
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (e) {
+    showError("마이크 권한이 거부되었거나 사용할 수 없습니다.\n브라우저 주소창의 마이크 권한을 허용해 주세요.");
+    return;
+  }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();                 // iOS 는 사용자 터치 직후에 resume 해야 함
+  const src = ctx.createMediaStreamSource(stream);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  buf = new Float32Array(analyser.fftSize);
+  src.connect(analyser);              // destination 에는 연결하지 않음 (스피커 하울링 방지)
+
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}   // 화면 꺼짐 방지
+
+  powers = [];
+  sampleTimer = setInterval(sample, SAMPLE_MS);
+  sendTimer = setInterval(send, SEND_MS);
+  pollTimer = setInterval(pollStatus, 2000);
+  running = true;
+  $("toggle").textContent = "측정 중지";
+  $("toggle").classList.add("stop");
+}
+
+function stop() {
+  clearInterval(sampleTimer); clearInterval(sendTimer); clearInterval(pollTimer);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  if (wakeLock) { try { wakeLock.release(); } catch (e) {} }
+  running = false;
+  $("toggle").textContent = "측정 시작";
+  $("toggle").classList.remove("stop");
+  $("db").textContent = "--"; $("dbfs").textContent = "--"; $("bar").style.width = "0";
+}
+
+$("toggle").onclick = () => running ? stop() : start();
+
+$("calib").onclick = () => {
+  const ref = parseFloat($("ref").value);
+  if (isNaN(ref)) { showError("소음계 앱의 dB 값을 숫자로 입력하세요."); return; }
+  if (!running) { showError("먼저 '측정 시작'을 누른 뒤 보정하세요."); return; }
+  showError("");
+  offset = ref - lastDbfs;            // 지금 측정된 dBFS 가 ref dB 가 되도록 offset 계산
+  $("offset").textContent = offset.toFixed(1);
+  try { localStorage.setItem(OFFSET_KEY, String(offset)); } catch (e) {}
+};
+
+// 탭이 다시 보이면 화면 꺼짐 방지 재요청
+document.addEventListener("visibilitychange", async () => {
+  if (running && document.visibilityState === "visible") {
+    try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+  }
+});
+</script>
+</body>
+</html>
