@@ -1,0 +1,10 @@
+{
+  "description": "관리자가 매장별 성비와 소음 평균을 기록하고 개인정보를 관리하며 매장 운영을 효율적으로 지원하는 대시보드입니다.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
