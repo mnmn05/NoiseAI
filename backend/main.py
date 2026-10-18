@@ -12,33 +12,26 @@ from fastapi import FastAPI
 from fastapi import Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
 
 from . import control
 from . import database
-
-
-# ------------------------------------------------------------ 요청 스키마
-class PersonUpdate(BaseModel):
-    person_count: int = Field(ge=0, le=500)
-
-
-class NoiseUpdate(BaseModel):
-    noise_db: float = Field(ge=0.0, le=140.0)
-
-
-class ModeUpdate(BaseModel):
-    auto_mode: bool
-    manual_volume: int | None = Field(default=None, ge=0, le=100)
+from .schemas import (
+    HistoryItem,
+    HourlyReportItem,
+    ModeUpdate,
+    ModeUpdateResponse,
+    NoiseUpdate,
+    NoiseUpdateResponse,
+    StatusResponse,
+)
 
 
 # ------------------------------------------------------------ 앱
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 서버가 시작될 때 딱 한 번 실행 (--reload 로 여러 번 로드돼도 스레드 중복 방지)
-    on_tick = None
     database.init_db()
-    on_tick = database.save_snapshot   # 3초마다 스냅샷을 DB에 저장 (T9)
+    on_tick = database.save_snapshot   # 3초마다 스냅샷을 DB에 저장 (T8)
     stop_event = threading.Event()
     thread = threading.Thread(target=control.background_loop, args=(stop_event, on_tick), daemon=True)
     thread.start()
@@ -63,6 +56,9 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 
 
 # ------------------------------------------------------------ API
+# ※ POST /api/update-person 은 카메라 인원수 감지 제외로 삭제됨
+
+
 @app.get("/")
 def read_root():
     return {"message": "NoiseAI Backend Server is Running!"}
@@ -73,34 +69,28 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/api/update-person")          # 윤지우(비전)가 호출
-def update_person(data: PersonUpdate):
-    control.set_person(data.person_count)
-    return {"result": "success", "person_count": data.person_count}
-
-
-@app.post("/api/update-noise")           # 마이크 페이지가 호출 (T4)
+@app.post("/api/update-noise", response_model=NoiseUpdateResponse, tags=["소음"])  # 마이크 페이지가 호출 (T4)
 def update_noise(data: NoiseUpdate):
-    control.set_noise(data.noise_db)
-    return {"result": "success", "noise_db": data.noise_db}
+    control.set_noise(data.noise_db, voice_ratio)
+    return {"result": "success", "noise_db": data.noise_db, "voice_ratio": data.voice_ratio}
 
 
-@app.get("/api/status")                  # 변정빈(대시보드), 윤지우(플레이어)가 호출
+@app.get("/api/status", response_model=StatusResponse, tags=["상태"])  # 변정빈(대시보드), 윤지우(플레이어)가 호출
 def get_status():
     return control.get_status()
 
 
-@app.post("/api/mode")                   # 점주용 자동/수동 전환 (T6)
+@app.post("/api/mode", response_model=ModeUpdateResponse, tags=["상태"])  # 점주용 자동/수동 전환 (T5)
 def set_mode(data: ModeUpdate):
     control.set_mode(data.auto_mode, data.manual_volume)
     return {"result": "success", "auto_mode": data.auto_mode}
 
 
-@app.get("/api/history")                 # 그래프용 원본 이력 (T9)
+@app.get("/api/history", response_model=list[HistoryItem], tags=["리포트"])  # 그래프용 원본 이력 (T8)
 def get_history(limit: int = Query(200, ge=1, le=5000)):
     return database.get_history(limit)
 
 
-@app.get("/api/report/hourly")           # 시간대별 리포트 (T9)
+@app.get("/api/report/hourly", response_model=list[HourlyReportItem], tags=["리포트"])  # 시간대별 리포트 (T8)
 def get_hourly_report(hours: int = Query(24, ge=1, le=168)):
     return database.get_hourly_report(hours)

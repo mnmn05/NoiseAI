@@ -2,7 +2,10 @@
 제어 엔진
   T1  상태 저장소 + 백그라운드 루프
   T4  마이크 dB 입력 (값이 안 들어오면 더미 값으로 자동 대체)
-  T6  복합 제어 규칙 (히스테리시스 / 중앙값 필터 / 지수평활 / 단계적 페이드)
+  T5  소음 기반 복합 제어 규칙 (히스테리시스 / 중앙값 필터 / 지수평활 / 단계적 페이드)
+
+※ 카메라 기반 인원수 감지는 법적 문제로 제외되었다.
+   혼잡도는 마이크로 측정한 소음(dB)만으로 판정한다.
 """
 import random
 import statistics
@@ -15,8 +18,8 @@ from . import config
 lock = threading.Lock()
 
 # /api/status 로 그대로 나가는 값. 필드명은 팀원들과의 계약이라 함부로 바꾸지 말 것.
+# (person_count 필드는 카메라 제외로 삭제됨 - 대시보드에서 더 이상 사용하지 않도록 공지 필요)
 store_status = {
-    "person_count": 0,
     "noise_level_db": 45.0,
     "crowd_level": "normal",          # quiet / normal / busy
     "current_volume": 40,             # 0~100
@@ -33,13 +36,7 @@ _target_volume = 40
 _noise_samples = []
 
 
-# ------------------------------------------------------------ 입력 (T1 / T4 / T6)
-def set_person(count: int):
-    """윤지우(비전)가 보낸 인원수 저장"""
-    with lock:
-        store_status["person_count"] = count
-
-
+# ------------------------------------------------------------ 입력 (T1 / T4 / T5)
 def set_noise(db: float):
     """마이크 페이지가 보낸 소음(dB) 저장 (T4)"""
     global _raw_noise_db, _last_mic_time
@@ -49,7 +46,7 @@ def set_noise(db: float):
 
 
 def set_mode(auto_mode: bool, manual_volume=None):
-    """점주용 자동/수동 전환 (T6)"""
+    """점주용 자동/수동 전환 (T5)"""
     global _target_volume
     with lock:
         store_status["auto_mode"] = auto_mode
@@ -78,20 +75,16 @@ def _read_noise() -> float:
     return _raw_noise_db
 
 
-def decide_crowd_level(person: int, db: float, prev: str) -> str:
-    """히스테리시스 적용: 이전 상태(prev)를 알아야 경계값에서 안 흔들린다."""
+def decide_crowd_level(db: float, prev: str) -> str:
+    """소음(dB) 기준 혼잡도 판정. 히스테리시스: 이전 상태(prev)를 알아야 경계값에서 안 흔들린다."""
     th = config.TH
     if prev == "busy":
-        if person <= th["busy_out"]["person"] and db <= th["busy_out"]["db"]:
-            return "normal"
-        return "busy"
+        return "normal" if db <= th["busy_out"]["db"] else "busy"
     if prev == "quiet":
-        if person >= th["quiet_out"]["person"] or db >= th["quiet_out"]["db"]:
-            return "normal"
-        return "quiet"
-    if person >= th["busy_in"]["person"] and db >= th["busy_in"]["db"]:
+        return "normal" if db >= th["quiet_out"]["db"] else "quiet"
+    if db >= th["busy_in"]["db"]:
         return "busy"
-    if person <= th["quiet_in"]["person"] and db <= th["quiet_in"]["db"]:
+    if db <= th["quiet_in"]["db"]:
         return "quiet"
     return "normal"
 
@@ -101,7 +94,6 @@ def control_tick() -> dict:
     global _target_volume
     with lock:
         raw = _read_noise()
-        person = store_status["person_count"]
 
         # 1) 순간 소음 제거(중앙값) -> 지수 평활
         _noise_samples.append(raw)
@@ -113,7 +105,7 @@ def control_tick() -> dict:
 
         # 2) 혼잡도 판정 (히스테리시스)
         prev = store_status["crowd_level"]
-        level = decide_crowd_level(person, store_status["noise_level_db"], prev)
+        level = decide_crowd_level(store_status["noise_level_db"], prev)
         store_status["crowd_level"] = level
 
         # 3) 자동 모드일 때만 목표 볼륨/트랙 갱신 + 단계적 페이드
@@ -132,7 +124,7 @@ def control_tick() -> dict:
 
 
 def background_loop(stop_event: threading.Event, on_tick=None):
-    """백그라운드에서 TICK_SEC 마다 제어 실행. on_tick(snapshot)은 이력 저장 등에 사용(T9)."""
+    """백그라운드에서 TICK_SEC 마다 제어 실행. on_tick(snapshot)은 이력 저장 등에 사용(T8)."""
     while not stop_event.is_set():
         try:
             snapshot = control_tick()
