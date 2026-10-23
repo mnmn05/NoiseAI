@@ -1,3 +1,9 @@
 fastapi
 uvicorn[standard]
 pydantic
+sqlalchemy>=2.0
+httpx
+python-dotenv
+psycopg[binary]
+# MySQL 을 쓰게 되면 아래 줄의 # 을 지우고 DATABASE_URL 을 mysql://... 로 설정
+# pymysql
