@@ -1,6 +1,18 @@
+# Python
 venv/
 __pycache__/
-*.db
-*.mp3
-*.pt
+*.pyc
 .env
+
+# 이력 DB (서버에서 생성됨)
+*.db
+
+# 용량 큰 자산은 깃에 올리지 않고 구글드라이브로 공유
+*.mp3
+*.wav
+*.pt
+
+# 환경변수 / 로컬 DB / 생성된 음원
+.env
+noiseai.db
+backend/media/

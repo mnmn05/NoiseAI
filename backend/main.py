@@ -15,7 +15,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import control
-from . import database
+from . import database            # (기존) SQLite 이력 — 새 Status_Log/리포트로 대체되면 삭제해도 됨
+from . import db as sqldb                 # (신규) SQLAlchemy — users / tracks / status_log
+from .routers import report, status_log, tracks, users
+from .settings import settings
 
 
 # ------------------------------------------------------------ 요청 스키마
@@ -38,6 +41,8 @@ async def lifespan(app: FastAPI):
     # 서버가 시작될 때 딱 한 번 실행 (--reload 로 여러 번 로드돼도 스레드 중복 방지)
     on_tick = None
     database.init_db()
+    sqldb.init_db()                       # users / tracks / status_log 테이블 생성 (이미 있으면 그대로 둠)
+    sqldb.recover_stale_tracks()          # 재시작으로 끊긴 '생성 중' 곡을 실패 처리
     on_tick = database.save_snapshot   # 3초마다 스냅샷을 DB에 저장 (T9)
     stop_event = threading.Event()
     thread = threading.Thread(target=control.background_loop, args=(stop_event, on_tick), daemon=True)
@@ -53,13 +58,23 @@ app = FastAPI(title="NoiseAI Backend", lifespan=lifespan)
 # 대시보드/마이크 페이지가 다른 주소에서 호출해도 되도록 허용 (개발용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # 마이크 측정 페이지: /static/mic.html  (Render가 HTTPS를 제공하므로 폰에서 마이크 권한이 뜸)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+# 생성된 음원 파일: /media/track_<id>.mp3  (T8)
+settings.media_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
+
+# 신규 라우터 (T1 users/status-log, T5·T8 tracks, T8 report)
+app.include_router(users.router)
+app.include_router(status_log.router)
+app.include_router(tracks.router)
+app.include_router(report.router)
 
 
 # ------------------------------------------------------------ API
