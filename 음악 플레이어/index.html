@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>음악 플레이어</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+<section class="stage">
+<div class="disc" id="disc"><div class="label"></div></div>
+<canvas id="viz" width="680" height="160" aria-hidden="true"></canvas>
+</section>
+<section>
+<h1 id="title">불러오는 중</h1>
+<p class="artist" id="artist">&nbsp;</p>
+<div class="seek"><span id="cur">0:00</span><input type="range" id="seek" min="0" max="1000" value="0" aria-label="재생 위치"><span id="dur">0:00</span></div>
+<div class="ctl">
+<button class="tg" id="shuf" aria-pressed="false">섞기</button>
+<button class="ib" id="prev" aria-label="이전 곡"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+<button class="ib main" id="play" aria-label="재생"><svg viewBox="0 0 24 24" id="pi"><path d="M7 4v16l13-8z"/></svg></button>
+<button class="ib" id="next" aria-label="다음 곡"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+<button class="tg" id="rep" aria-pressed="false">한 곡 반복</button>
+</div>
+<div class="vol"><label for="vol">볼륨</label><input type="range" id="vol" min="0" max="100" value="80"></div>
+<ul id="list"></ul>
+<label class="add">내 음악 파일 추가<input type="file" id="file" accept="audio/*" multiple hidden></label>
+<p id="msg" role="status"></p>
+</section>
+</main>
+<script src="script.js"></script>
+</body>
+</html>
