@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>소음 측정기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@200;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e8edf1; --surface:#f6f8fa; --ink:#12202f; --muted:#5c6b7a; --line:#c9d3dc;
+  --ok:#23895c; --warn:#c98a0a; --bad:#d4472b; --hot:#a3153b;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1720; --surface:#17222d; --ink:#e6edf3; --muted:#92a3b3; --line:#2a3947;
+    --ok:#4cc38a; --warn:#f0b43a; --bad:#ff7a5c; --hot:#ff5c8a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1720; --surface:#17222d; --ink:#e6edf3; --muted:#92a3b3; --line:#2a3947;
+  --ok:#4cc38a; --warn:#f0b43a; --bad:#ff7a5c; --hot:#ff5c8a; color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.55}
+main{max-width:760px;margin:0 auto;padding:24px 18px 48px}
+h1{font-size:1.05rem;font-weight:600;margin:0 0 20px}
+.read{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 22px 16px}
+.num{font-size:clamp(5.5rem,24vw,9rem);font-weight:200;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.03em;color:var(--lvl,var(--muted));transition:color .25s}
+.num small{font-size:.22em;font-weight:400;letter-spacing:0;margin-left:.3em;color:var(--muted)}
+.state{font-size:1.15rem;font-weight:600;color:var(--lvl,var(--muted));min-height:1.8em}
+.state span{font-weight:400;color:var(--muted);font-size:.92rem;margin-left:.5em}
+.bar{position:relative;height:10px;border-radius:5px;margin:16px 0 4px;background:linear-gradient(90deg,var(--ok) 0 37%,var(--warn) 37% 62%,var(--bad) 62% 85%,var(--hot) 85% 100%);opacity:.9}
+.bar i{position:absolute;top:-5px;width:4px;height:20px;border-radius:2px;background:var(--ink);left:0;transition:left .08s linear}
+.scale{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums}
+canvas{display:block;width:100%;height:170px;margin-top:14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)}
+.cap{font-size:.78rem;color:var(--muted);margin:6px 2px 0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.stats div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.stats dt{font-size:.78rem;color:var(--muted)}
+.stats dd{margin:0;font-size:1.5rem;font-weight:400;font-variant-numeric:tabular-nums}
+.ctrl{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:12px 20px;cursor:pointer;min-height:46px}
+button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);flex:1 1 180px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+.msg{margin-top:12px;color:var(--bad);font-size:.92rem;min-height:1.4em}
+.cal{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+.cal label{display:flex;justify-content:space-between;font-weight:600;font-size:.95rem}
+.cal input{width:100%;margin:12px 0 6px;accent-color:var(--ink)}
+.cal p,.note{font-size:.84rem;color:var(--muted);margin:4px 0 0;max-width:62ch}
+h2{font-size:.95rem;margin:28px 0 8px}
+ul.ref{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+ul.ref li{display:flex;justify-content:space-between;gap:12px;padding:9px 16px;border-top:1px solid var(--line);font-size:.92rem}
+ul.ref li:first-child{border-top:0}
+ul.ref li b{font-variant-numeric:tabular-nums;font-weight:600}
+@media (prefers-reduced-motion:reduce){.num,.bar i{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>소음 측정기</h1>
+
+  <section class="read" aria-live="off">
+    <div class="num" id="num">--<small>dB</small></div>
+    <div class="state" id="state">측정을 시작하면 소리 크기가 표시됩니다</div>
+    <div class="bar"><i id="needle"></i></div>
+    <div class="scale"><span>20</span><span>50</span><span>80</span><span>110</span></div>
+    <canvas id="cv" aria-label="최근 60초 소음 변화 그래프"></canvas>
+    <p class="cap">최근 60초</p>
+  </section>
+
+  <dl class="stats">
+    <div><dt>최소</dt><dd id="smin">--</dd></div>
+    <div><dt>평균</dt><dd id="savg">--</dd></div>
+    <div><dt>최대</dt><dd id="smax">--</dd></div>
+  </dl>
+
+  <div class="ctrl">
+    <button class="primary" id="toggle">측정 시작</button>
+    <button id="reset">기록 초기화</button>
+  </div>
+  <div class="msg" id="msg" role="alert"></div>
+
+  <section class="cal">
+    <label for="off"><span>보정값</span><span id="offv">90</span></label>
+    <input type="range" id="off" min="60" max="120" value="90">
+    <p>휴대폰과 브라우저마다 마이크 감도가 달라서 표시값은 추정치입니다. 소음 측정 앱이나 소음계와 비교해 보정값을 맞추면 더 정확해집니다.</p>
+  </section>
+
+  <h2>소리 크기 기준</h2>
+  <ul class="ref">
+    <li><span>속삭임, 조용한 방</span><b>30 dB</b></li>
+    <li><span>도서관, 조용한 사무실</span><b>40 dB</b></li>
+    <li><span>일상 대화</span><b>60 dB</b></li>
+    <li><span>번화가, 달리는 지하철 안</span><b>80 dB</b></li>
+    <li><span>이 이상 장시간 노출 시 청력 손상 위험</span><b>85 dB</b></li>
+    <li><span>자동차 경적, 콘서트장</span><b>100 dB</b></li>
+  </ul>
+  <p class="note">소리는 기기 안에서만 분석하며 녹음하거나 전송하지 않습니다.</p>
+</main>
+
+<script>
+(function(){
+  var MIN=20, MAX=110, SPAN=60, STEP=250, N=SPAN*1000/STEP;
+  var $=function(id){return document.getElementById(id)};
+  var numEl=$('num'), stateEl=$('state'), needle=$('needle'), cv=$('cv'), msg=$('msg'), btn=$('toggle');
+  var ac=null, analyser=null, stream=null, buf=null, raf=0, running=false;
+  var offset=90, smooth=null, hist=[], blockMax=0, lastPush=0, stats;
+
+  function resetStats(){stats={min:Infinity,max:-Infinity,sum:0,n:0,warm:0};hist=[];['smin','savg','smax'].forEach(function(i){$(i).textContent='--'});draw();}
+  resetStats();
+
+  function level(db){
+    if(db<40) return {t:'조용함',d:'도서관 수준',c:'var(--ok)'};
+    if(db<60) return {t:'보통',d:'일상적인 소리',c:'var(--ok)'};
+    if(db<75) return {t:'다소 시끄러움',d:'대화가 또렷하게 들리는 수준',c:'var(--warn)'};
+    if(db<85) return {t:'시끄러움',d:'번화가 수준',c:'var(--bad)'};
+    return {t:'매우 시끄러움',d:'오래 있으면 청력에 해로움',c:'var(--hot)'};
+  }
+  function colorFor(db){return level(db).c}
+
+  function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v.replace(/var\((.*)\)/,'$1')).trim()}
+
+  function draw(){
+    var dpr=window.devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
+    if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);}
+    var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+    var line=css('--line'), muted=css('--muted');
+    g.font='11px "Noto Sans KR",sans-serif'; g.textBaseline='middle';
+    [40,60,80,100].forEach(function(v){
+      var y=h-(v-MIN)/(MAX-MIN)*h;
+      g.strokeStyle=line; g.lineWidth=1; g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke();
+      g.fillStyle=muted; g.fillText(v,4,y-7);
+    });
+    var bw=w/N;
+    for(var i=0;i<hist.length;i++){
+      var v=hist[i], x=w-(hist.length-i)*bw, bh=Math.max(2,(v-MIN)/(MAX-MIN)*h);
+      g.fillStyle=css(colorFor(v)); g.fillRect(x,h-bh,Math.max(1,bw-1),bh);
+    }
+  }
+
+  function show(db){
+    var lv=level(db);
+    document.documentElement.style.setProperty('--lvl',lv.c.replace(/var\((.*)\)/,'var($1)'));
+    numEl.firstChild.nodeValue=Math.round(db);
+    stateEl.innerHTML=lv.t+'<span>'+lv.d+'</span>';
+    needle.style.left='calc('+((db-MIN)/(MAX-MIN)*100)+'% - 2px)';
+  }
+
+  function loop(ts){
+    if(!running) return;
+    analyser.getFloatTimeDomainData(buf);
+    var s=0; for(var i=0;i<buf.length;i++) s+=buf[i]*buf[i];
+    var rms=Math.sqrt(s/buf.length);
+    var db=rms>1e-7 ? 20*Math.log10(rms)+offset : MIN;
+    db=Math.min(MAX,Math.max(MIN,db));
+    if(smooth===null) smooth=db;
+    smooth+=(db-smooth)*(db>smooth?0.5:0.08);
+    show(smooth);
+    blockMax=Math.max(blockMax,smooth);
+    if(ts-lastPush>=STEP){
+      lastPush=ts; hist.push(blockMax); if(hist.length>N) hist.shift();
+      if(++stats.warm>4){
+        stats.min=Math.min(stats.min,blockMax); stats.max=Math.max(stats.max,blockMax);
+        stats.sum+=blockMax; stats.n++;
+        $('smin').textContent=Math.round(stats.min); $('smax').textContent=Math.round(stats.max);
+        $('savg').textContent=Math.round(stats.sum/stats.n);
+      }
+      blockMax=0; draw();
+    }
+    raf=requestAnimationFrame(loop);
+  }
+
+  async function start(){
+    msg.textContent='';
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      msg.textContent='이 브라우저는 마이크 입력을 지원하지 않습니다. 최신 Chrome, Safari, Edge에서 열어 주세요.'; return;
+    }
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    }catch(e){
+      msg.textContent=(e&&e.name==='NotAllowedError')
+        ? '마이크 권한이 거부되었습니다. 주소창의 사이트 설정에서 마이크를 허용한 뒤 다시 시도해 주세요.'
+        : '마이크를 사용할 수 없습니다. 연결된 마이크가 있는지 확인해 주세요.';
+      return;
+    }
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    await ac.resume();
+    var src=ac.createMediaStreamSource(stream);
+    analyser=ac.createAnalyser(); analyser.fftSize=2048; src.connect(analyser);
+    buf=new Float32Array(analyser.fftSize);
+    smooth=null; blockMax=0; lastPush=0; running=true;
+    btn.textContent='측정 중지';
+    raf=requestAnimationFrame(loop);
+  }
+  function stop(){
+    running=false; cancelAnimationFrame(raf);
+    if(stream) stream.getTracks().forEach(function(t){t.stop()});
+    if(ac) ac.close();
+    stream=null; ac=null;
+    btn.textContent='측정 시작';
+    stateEl.textContent='측정이 중지되었습니다';
+  }
+
+  btn.addEventListener('click',function(){running?stop():start()});
+  $('reset').addEventListener('click',resetStats);
+  $('off').addEventListener('input',function(e){offset=+e.target.value;$('offv').textContent=offset;});
+  window.addEventListener('resize',draw);
+  if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+  document.addEventListener('visibilitychange',function(){if(document.hidden&&running)stop();});
+})();
+</script>
+</body>
+</html>
