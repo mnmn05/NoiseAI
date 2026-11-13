@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "note": "keywords 는 backend/prompt_engine.py 의 *_KEYWORDS 와 같은 어휘. 바꿀 때는 양쪽을 같이 바꿀 것 (tests/test_bgm.py 가 어긋남을 검사). 성별은 프롬프트에 쓰지 않음.",
+  "categories": {
+    "cafe": {
+      "label_ko": "카페",
+      "keywords": [
+        "lofi beats",
+        "acoustic piano",
+        "chill"
+      ]
+    },
+    "bar": {
+      "label_ko": "주점",
+      "keywords": [
+        "EDM",
+        "heavy bass",
+        "upbeat"
+      ]
+    },
+    "restaurant": {
+      "label_ko": "음식점",
+      "keywords": [
+        "jazz",
+        "light percussion",
+        "easygoing"
+      ]
+    }
+  },
+  "moods": {
+    "calm": {
+      "label_ko": "차분한",
+      "keywords": [
+        "calm",
+        "relaxing"
+      ]
+    },
+    "lively": {
+      "label_ko": "활기찬",
+      "keywords": [
+        "upbeat",
+        "energetic"
+      ]
+    },
+    "cozy": {
+      "label_ko": "아늑한",
+      "keywords": [
+        "warm",
+        "mellow"
+      ]
+    },
+    "elegant": {
+      "label_ko": "고급스러운",
+      "keywords": [
+        "smooth",
+        "sophisticated"
+      ]
+    }
+  },
+  "age_groups": {
+    "teens": {
+      "label_ko": "10대",
+      "keywords": [
+        "trendy",
+        "energetic"
+      ]
+    },
+    "20s": {
+      "label_ko": "20대",
+      "keywords": [
+        "trendy",
+        "modern"
+      ]
+    },
+    "30s": {
+      "label_ko": "30대",
+      "keywords": [
+        "smooth",
+        "modern"
+      ]
+    },
+    "40s": {
+      "label_ko": "40대",
+      "keywords": [
+        "mellow",
+        "classic groove"
+      ]
+    },
+    "50plus": {
+      "label_ko": "50대 이상",
+      "keywords": [
+        "classic",
+        "warm"
+      ]
+    }
+  }
+}

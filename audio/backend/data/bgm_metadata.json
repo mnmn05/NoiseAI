@@ -1,0 +1,99 @@
+[
+  {
+    "filename": "calm_ambient_01.mp3",
+    "title": "Calm Ambient 01",
+    "crowd_level": "busy",
+    "tags": [
+      "lofi beats",
+      "acoustic piano",
+      "slow tempo",
+      "calm",
+      "relaxing",
+      "chill"
+    ],
+    "prompt": "Instrumental background music for a cafe: lofi beats, acoustic piano, slow tempo, calm, relaxing, chill. No vocals.",
+    "bpm": null,
+    "duration_sec": 30,
+    "model": "meta/musicgen"
+  },
+  {
+    "filename": "calm_ambient_02.mp3",
+    "title": "Calm Ambient 02",
+    "crowd_level": "busy",
+    "tags": [
+      "jazz",
+      "light percussion",
+      "smooth",
+      "sophisticated",
+      "slow tempo",
+      "calm",
+      "easygoing"
+    ],
+    "prompt": "Instrumental background music for a restaurant: jazz, light percussion, smooth, sophisticated, slow tempo, calm, easygoing. No vocals.",
+    "bpm": null,
+    "duration_sec": 30,
+    "model": "meta/musicgen"
+  },
+  {
+    "filename": "standard_bgm_01.mp3",
+    "title": "Standard BGM 01",
+    "crowd_level": "normal",
+    "tags": [
+      "lofi beats",
+      "acoustic piano",
+      "warm",
+      "mellow",
+      "chill"
+    ],
+    "prompt": "Instrumental background music for a cafe: lofi beats, acoustic piano, warm, mellow, chill. No vocals.",
+    "bpm": null,
+    "duration_sec": 30,
+    "model": "meta/musicgen"
+  },
+  {
+    "filename": "standard_bgm_02.mp3",
+    "title": "Standard BGM 02",
+    "crowd_level": "normal",
+    "tags": [
+      "jazz",
+      "light percussion",
+      "smooth",
+      "sophisticated",
+      "easygoing"
+    ],
+    "prompt": "Instrumental background music for a restaurant: jazz, light percussion, smooth, sophisticated, easygoing. No vocals.",
+    "bpm": null,
+    "duration_sec": 30,
+    "model": "meta/musicgen"
+  },
+  {
+    "filename": "lounge_upbeat_01.mp3",
+    "title": "Lounge Upbeat 01",
+    "crowd_level": "quiet",
+    "tags": [
+      "EDM",
+      "heavy bass",
+      "upbeat",
+      "energetic"
+    ],
+    "prompt": "Instrumental background music for a bar: EDM, heavy bass, upbeat, energetic. No vocals.",
+    "bpm": null,
+    "duration_sec": 30,
+    "model": "meta/musicgen"
+  },
+  {
+    "filename": "lounge_upbeat_02.mp3",
+    "title": "Lounge Upbeat 02",
+    "crowd_level": "quiet",
+    "tags": [
+      "lofi beats",
+      "acoustic piano",
+      "upbeat",
+      "energetic"
+    ],
+    "prompt": "Instrumental background music for a cafe: lofi beats, acoustic piano, upbeat, energetic. No vocals.",
+    "bpm": null,
+    "duration_sec": 30,
+    "model": "meta/musicgen"
+  }
+]
