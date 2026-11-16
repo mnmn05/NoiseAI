@@ -1,56 +1,47 @@
 """
 음악 생성 (T5 + T8)
 
-  POST /api/tracks/generate     프롬프트 만들고 Replicate 생성 시작 -> 바로 응답 (생성은 백그라운드에서 진행)
+  POST /api/tracks/generate     곡 재생이 시작될 때 플레이어가 호출 -> 다음 곡 생성 시작 (바로 응답, 생성은 백그라운드)
   GET  /api/tracks/{id}         상태 확인 (pending / processing / succeeded / failed) — 프론트가 폴링
-  GET  /api/tracks/next         아직 안 틀어준 가장 오래된 완성곡 (재생 대기열)
+  GET  /api/tracks/next         다음에 틀 곡: 손님 요청곡(priority 높은 순) -> 오래된 자동곡 순. 재구성으로 빠진 곡은 제외
   POST /api/tracks/{id}/played  재생 완료 표시
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import db as dbmod
 from .. import replicate_client, storage
 from ..db import get_db
-from ..models import StatusLog, Track, User, utcnow
-from ..prompt_engine import StoreProfile, build_prompt_detail
+from ..models import Track, User, utcnow
+from ..security import ensure_owner
+from ..services import aware, enqueue_generation
 from ..settings import settings
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
-RECENT_NOISE_SECONDS = 30      # noise_db 를 안 보내면 최근 30초 평균을 쓴다
-
 
 class GenerateRequest(BaseModel):
     user_id: int
-    noise_db: float | None = Field(default=None, ge=0.0, le=140.0)
+    noise_db: float | None = Field(default=None, ge=0.0, le=140.0)   # 비우면 최근 4분 평균 사용
 
 
 def _iso(dt: datetime | None) -> str | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:                       # SQLite 는 시간대를 저장하지 않아 UTC 로 간주
-        dt = dt.replace(tzinfo=utcnow().tzinfo)
-    return dt.isoformat(timespec="seconds")
+    dt = aware(dt)
+    return None if dt is None else dt.isoformat(timespec="seconds")
 
 
-def _track_out(t: Track) -> dict:
+def track_out(t: Track) -> dict:
     return {
         "id": t.id, "user_id": t.user_id, "status": t.status, "prompt": t.prompt,
         "audio_url": t.audio_url, "is_played": t.is_played, "error": t.error,
         "created_at": _iso(t.created_at), "completed_at": _iso(t.completed_at),
+        "source": t.source, "priority": t.priority, "is_skipped": t.is_skipped,
+        "noise_level": t.noise_level, "situation": t.situation, "played_at": _iso(t.played_at),
     }
-
-
-def _recent_avg_noise(db: Session, user_id: int) -> float | None:
-    cutoff = utcnow() - timedelta(seconds=RECENT_NOISE_SECONDS)
-    v = db.scalar(select(func.avg(StatusLog.noise_db)).where(
-        StatusLog.user_id == user_id, StatusLog.created_at >= cutoff))
-    return None if v is None else float(v)
 
 
 async def run_generation(track_id: int):
@@ -87,46 +78,28 @@ async def run_generation(track_id: int):
 
 
 @router.post("/generate", status_code=202)
-def generate(data: GenerateRequest, background: BackgroundTasks, response: Response, db: Session = Depends(get_db)):
+def generate(data: GenerateRequest, background: BackgroundTasks, response: Response, request: Request,
+             db: Session = Depends(get_db)):
+    ensure_owner(request, data.user_id)
     user = db.get(User, data.user_id)
     if not user:
         raise HTTPException(404, "사용자를 찾을 수 없습니다")
-
-    # 같은 매장에서 생성 중인 곡이 있으면 새로 만들지 않는다 (클라이언트 실수로 과금이 폭주하는 것 방지)
-    window = utcnow() - timedelta(seconds=settings.poll_timeout + 60)
-    active = db.scalar(
-        select(Track).where(Track.user_id == user.id, Track.status.in_(("pending", "processing")),
-                            Track.created_at >= window).order_by(Track.id.desc())
-    )
-    if active:
+    track, info, created = enqueue_generation(db, user, background, source="auto", noise_db=data.noise_db)
+    if not created:
+        # 같은 매장에서 생성 중인 자동곡이 있으면 새로 만들지 않는다 (클라이언트 실수로 과금이 폭주하는 것 방지)
         response.status_code = 200
-        return {**_track_out(active), "already_generating": True}
-
-    noise_db = data.noise_db if data.noise_db is not None else _recent_avg_noise(db, user.id)
-    profile = StoreProfile(category=user.category, age_group=user.age_group, gender=user.gender, mood=user.mood)
-    result = build_prompt_detail(noise_db, profile, settings.prompt_strategy)
-
-    track = Track(user_id=user.id, prompt=result.prompt, status="pending")
-    db.add(track)
-    db.commit()
-    background.add_task(run_generation, track.id)
-    return {
-        **_track_out(track),
-        "already_generating": False,
-        "noise_db_used": None if noise_db is None else round(noise_db, 1),
-        "noise_level": result.noise_level,
-        "keywords": result.keywords,
-        "dropped_keywords": result.dropped,
-    }
+        return {**track_out(track), "already_generating": True}
+    return {**track_out(track), "already_generating": False, **info}
 
 
 @router.get("/next")
 def next_track(user_id: int, db: Session = Depends(get_db)):
     t = db.scalar(select(Track).where(Track.user_id == user_id, Track.status == "succeeded",
-                                      Track.is_played.is_(False)).order_by(Track.id.asc()))
+                                      Track.is_played.is_(False), Track.is_skipped.is_(False))
+                  .order_by(Track.priority.desc(), Track.id.asc()))
     if not t:
-        raise HTTPException(404, "재생 대기 중인 곡이 없습니다")
-    return _track_out(t)
+        raise HTTPException(404, "재생 대기 중인 곡이 없습니다 (기본 BGM 으로 이어서 재생하세요)")
+    return track_out(t)
 
 
 @router.get("")
@@ -136,7 +109,7 @@ def list_tracks(user_id: int, status: str | None = None, limit: int = Query(20, 
     if status:
         stmt = stmt.where(Track.status == status)
     rows = db.scalars(stmt.order_by(Track.id.desc()).limit(limit)).all()
-    return [_track_out(t) for t in rows]
+    return [track_out(t) for t in rows]
 
 
 @router.get("/{track_id}")
@@ -144,7 +117,7 @@ def get_track(track_id: int, db: Session = Depends(get_db)):
     t = db.get(Track, track_id)
     if not t:
         raise HTTPException(404, "곡을 찾을 수 없습니다")
-    return _track_out(t)
+    return track_out(t)
 
 
 @router.post("/{track_id}/played")
@@ -152,6 +125,8 @@ def mark_played(track_id: int, db: Session = Depends(get_db)):
     t = db.get(Track, track_id)
     if not t:
         raise HTTPException(404, "곡을 찾을 수 없습니다")
-    t.is_played = True
-    db.commit()
-    return _track_out(t)
+    if not t.is_played:
+        t.is_played = True
+        t.played_at = utcnow()
+        db.commit()
+    return track_out(t)

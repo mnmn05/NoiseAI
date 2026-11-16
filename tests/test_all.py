@@ -186,8 +186,14 @@ for v in (40, 44, 46):
     client.post("/api/status-log", json={"user_id": uid, "noise_db": v})
 fake = FakeReplicate(polls_before_done=1); install(fake)
 b = client.post("/api/tracks/generate", json={"user_id": uid}).json()
-check(b["noise_db_used"] == 43.3 and b["noise_level"] == "quiet", "최근 평균 43.3dB -> quiet")
-check("slow tempo" in b["prompt"], "조용하면 slow tempo 포함: " + b["prompt"])
+check(b["noise_db_used"] is None and b["noise_level"] == "normal", "샘플이 20개 미만(약 1분 미만)이면 평균을 믿지 않음 -> normal")
+wipe_tracks()
+for _ in range(7):
+    for v in (40, 44, 46):
+        client.post("/api/status-log", json={"user_id": uid, "noise_db": v})
+b = client.post("/api/tracks/generate", json={"user_id": uid}).json()
+check(b["noise_db_used"] == 43.3 and b["noise_level"] == "quiet", "최근 4분 평균 43.3dB -> quiet")
+check(b["strategy"] == "stable" and "medium tempo" in b["prompt"], "가입 기본값 안정형: 조용하면 medium tempo: " + b["prompt"])
 check("calm" in b["prompt"] and "energetic" not in b["prompt"], "calm 과 energetic 이 같이 들어가지 않음")
 
 print("[6] 중복 생성 방지")

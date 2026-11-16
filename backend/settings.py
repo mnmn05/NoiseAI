@@ -58,7 +58,10 @@ class Settings:
     media_dir: Path
     public_base_url: str         # 예: https://noiseai.onrender.com  (비우면 /media/... 상대경로)
     cors_origins: list
-    prompt_strategy: str         # match: 시끄러우면 신나는 곡 / calm: 시끄러우면 차분한 곡
+    prompt_strategy: str         # match: 시끄러우면 신나는 곡 / calm: 시끄러우면 차분한 곡 (매장 설정이 없을 때만 쓰는 기본값)
+    jwt_secret: str = ""         # 로그인 토큰 서명 키. 비우면 서버 시작 때마다 임의 생성(재시작 시 재로그인 필요)
+    auth_required: bool = False  # True: 점주 전용 API 에 로그인 토큰 필수 (배포 시 켜기)
+    token_ttl_hours: float = 24.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -83,6 +86,9 @@ class Settings:
             public_base_url=os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/"),
             cors_origins=origins or ["*"],
             prompt_strategy=strategy if strategy in {"match", "calm"} else "match",
+            jwt_secret=os.getenv("JWT_SECRET", "").strip(),
+            auth_required=_env_bool("AUTH_REQUIRED", False),
+            token_ttl_hours=_env_float("TOKEN_TTL_HOURS", 24.0),
         )
 
 

@@ -1,7 +1,6 @@
 """DB 연결 (T1) — SQLAlchemy 2.x. DATABASE_URL 만 바꾸면 SQLite / PostgreSQL / MySQL 어디든 동작."""
-from sqlalchemy import update
+from sqlalchemy import create_engine, inspect, text, update
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy import create_engine
 
 from .settings import settings
 
@@ -38,6 +37,39 @@ def get_db():
 def init_db():
     from . import models  # noqa: F401  (모델을 import 해야 테이블이 등록됨)
     Base.metadata.create_all(engine)
+    ensure_columns()
+
+
+def ensure_columns() -> list[str]:
+    """이미 만들어진 테이블에 모델에는 있는데 DB 에는 없는 컬럼을 ALTER TABLE 로 추가한다.
+    (create_all 은 새 테이블만 만들고 기존 테이블은 건드리지 않기 때문. Render 에 이미 배포된 DB 대응용)
+    추가한 컬럼 이름 목록을 돌려준다."""
+    from . import models
+    added = []
+    insp = inspect(engine)
+    existing_tables = set(insp.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                ddl = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'
+                if col.server_default is not None:
+                    arg = col.server_default.arg
+                    default_sql = arg.text if hasattr(arg, "text") else str(arg.compile(dialect=engine.dialect))
+                    ddl += f" DEFAULT {default_sql}"
+                conn.execute(text(ddl))
+                added.append(f"{table.name}.{col.name}")
+        # 예전에 가입한 점주는 공개 링크 ID 가 없으니 채워 준다
+        if "users.public_id" in added or "users" in existing_tables:
+            rows = conn.execute(text("SELECT id FROM users WHERE public_id IS NULL")).fetchall()
+            for (uid,) in rows:
+                conn.execute(text("UPDATE users SET public_id = :p WHERE id = :i"),
+                             {"p": models.new_public_id(), "i": uid})
+    return added
 
 
 def recover_stale_tracks() -> int:
