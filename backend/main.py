@@ -17,7 +17,12 @@ from pydantic import BaseModel, Field
 from . import control
 from . import database            # (기존) SQLite 이력 — 새 Status_Log/리포트로 대체되면 삭제해도 됨
 from . import db as sqldb                 # (신규) SQLAlchemy — users / tracks / status_log
-from .routers import report, status_log, tracks, users
+from .routers import auth, feedback, report, sales, seats, status_log, tracks, users
+
+try:                                     # T2(윤지우) 기본 BGM 라우터 — backend/routers/bgm.py 가 병합되면 자동 등록
+    from .routers import bgm as bgm_router
+except ImportError:                      # 아직 병합 전이면 건너뜀
+    bgm_router = None
 from .settings import settings
 
 
@@ -70,11 +75,17 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 settings.media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
 
-# 신규 라우터 (T1 users/status-log, T5·T8 tracks, T8 report)
+# 라우터 (T1 auth/users/status-log, T5·T8 tracks/feedback, T8 report/seats/sales)
+app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(status_log.router)
 app.include_router(tracks.router)
 app.include_router(report.router)
+app.include_router(feedback.router)      # (신규) 손님 키워드 요청 / '조용했으면'
+app.include_router(seats.router)         # (신규) 키오스크 자리 선택 + 공개 혼잡 상태
+app.include_router(sales.router)         # (신규) POS 매출 업로드
+if bgm_router is not None:
+    bgm_router.install(app)              # T2: /api/bgm/playlist + /bgm/<파일명>
 
 
 # ------------------------------------------------------------ API

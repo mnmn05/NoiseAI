@@ -51,6 +51,7 @@
 
 <div class="card">
   <div class="row"><span>서버 전송</span><span id="sendStatus">-</span></div>
+  <div class="row"><span>매장 이력 저장</span><span id="logStatus">-</span></div>
   <div class="row"><span>서버 혼잡도</span><span id="level">-</span></div>
   <div class="row"><span>서버 볼륨</span><span id="vol">-</span></div>
   <div class="row"><span>소음 출처</span><span id="source">-</span></div>
@@ -61,13 +62,20 @@ const API = location.origin;          // 이 페이지는 백엔드가 직접 �
 const OFFSET_KEY = "noiseai_offset";
 const SEND_MS = 1000;                 // 서버로 1초마다 전송
 const SAMPLE_MS = 100;                // 화면은 0.1초마다 갱신
+const LOG_MS = 3000;                  // 매장 이력(status_log)은 3초마다 저장 (리포트·AI 곡 프롬프트에 사용)
+// 매장 연결: mic.html?user_id=1&zone=1F  (user_id 가 없으면 예전처럼 /api/update-noise 만 보냄)
+const QS = new URLSearchParams(location.search);
+const USER_ID = parseInt(QS.get("user_id"), 10);
+const ZONE = QS.get("zone") || null;
 
 const $ = id => document.getElementById(id);
 let offset = 90;                      // dBFS(-90~0) -> 대략적인 dB(0~90) 로 옮기는 기본값
 try { const v = parseFloat(localStorage.getItem(OFFSET_KEY)); if (!isNaN(v)) offset = v; } catch (e) {}
 $("offset").textContent = offset.toFixed(1);
+$("logStatus").textContent = Number.isInteger(USER_ID) ? ("매장 #" + USER_ID + (ZONE ? " · " + ZONE : "")) : "user_id 없음 (주소에 ?user_id= 추가)";
 
 let stream, ctx, analyser, buf, sampleTimer, sendTimer, pollTimer, wakeLock;
+let logTimer, logValues = [];         // 3초 동안 보낸 dB 값 (평균을 status_log 에 저장)
 let powers = [];                      // 최근 1초 동안의 파워(rms^2) 샘플
 let lastDbfs = -90;                   // 최근 1초 평균 dBFS (보정 때 사용)
 let running = false;
@@ -104,8 +112,25 @@ async function send() {
       body: JSON.stringify({ noise_db: noiseDb }),
     });
     $("sendStatus").textContent = res.ok ? ("OK · " + noiseDb + " dB") : ("오류 " + res.status);
+    logValues.push(noiseDb);
   } catch (e) {
     $("sendStatus").textContent = "서버 연결 실패";
+  }
+}
+
+async function sendLog() {
+  if (!Number.isInteger(USER_ID) || logValues.length === 0) return;
+  const avg = Math.round(logValues.reduce((a, b) => a + b, 0) / logValues.length * 10) / 10;
+  logValues = [];
+  try {
+    const res = await fetch(API + "/api/status-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: USER_ID, noise_db: avg, zone_id: ZONE }),
+    });
+    $("logStatus").textContent = res.ok ? ("저장 OK · " + avg + " dB") : ("저장 오류 " + res.status);
+  } catch (e) {
+    $("logStatus").textContent = "저장 실패 (서버 연결)";
   }
 }
 
@@ -147,13 +172,15 @@ async function start() {
   sampleTimer = setInterval(sample, SAMPLE_MS);
   sendTimer = setInterval(send, SEND_MS);
   pollTimer = setInterval(pollStatus, 2000);
+  logValues = [];
+  logTimer = setInterval(sendLog, LOG_MS);
   running = true;
   $("toggle").textContent = "측정 중지";
   $("toggle").classList.add("stop");
 }
 
 function stop() {
-  clearInterval(sampleTimer); clearInterval(sendTimer); clearInterval(pollTimer);
+  clearInterval(sampleTimer); clearInterval(sendTimer); clearInterval(pollTimer); clearInterval(logTimer);
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (ctx) ctx.close();
   if (wakeLock) { try { wakeLock.release(); } catch (e) {} }

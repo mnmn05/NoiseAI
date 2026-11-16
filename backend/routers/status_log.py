@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api", tags=["status-log"])
 class StatusLogCreate(BaseModel):
     user_id: int
     noise_db: float = Field(ge=0.0, le=140.0)
+    zone_id: str | None = Field(default=None, max_length=30)   # 층/구역 (예: 1F). 없으면 매장 전체
 
 
 def _iso(dt: datetime) -> str:
@@ -32,10 +33,12 @@ def create_status_log(data: StatusLogCreate, db: Session = Depends(get_db)):
         noise_db=round(data.noise_db, 1),
         hour_bucket=now.astimezone(KST).strftime("%Y-%m-%dT%H"),
         created_at=now,
+        zone_id=(data.zone_id or None),
     )
     db.add(row)
     db.commit()
-    return {"id": row.id, "user_id": row.user_id, "noise_db": row.noise_db, "hour_bucket": row.hour_bucket}
+    return {"id": row.id, "user_id": row.user_id, "noise_db": row.noise_db, "hour_bucket": row.hour_bucket,
+            "zone_id": row.zone_id}
 
 
 @router.get("/status-log")

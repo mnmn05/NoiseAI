@@ -24,11 +24,13 @@ store_status = {
     "auto_mode": True,
     "noise_source": "dummy",          # mic / dummy
     "updated_at": None,
+    "max_volume": config.MAX_VOLUME,  # 플레이어(Howler) 출력 상한. 이 이상으로 키우지 말 것
 }
 
 # 내부 전용 값 (API로 나가지 않음)
 _raw_noise_db = 45.0
 _last_mic_time = None
+_last_person_time = None          # 인원수 입력이 최근에 들어왔는지 (카메라 인원수는 범위에서 빠져 보통 None)
 _target_volume = 40
 _noise_samples = []
 
@@ -36,8 +38,10 @@ _noise_samples = []
 # ------------------------------------------------------------ 입력 (T1 / T4 / T6)
 def set_person(count: int):
     """윤지우(비전)가 보낸 인원수 저장"""
+    global _last_person_time
     with lock:
         store_status["person_count"] = count
+        _last_person_time = time.monotonic()
 
 
 def set_noise(db: float):
@@ -54,6 +58,7 @@ def set_mode(auto_mode: bool, manual_volume=None):
     with lock:
         store_status["auto_mode"] = auto_mode
         if not auto_mode and manual_volume is not None:
+            manual_volume = min(manual_volume, config.MAX_VOLUME)
             store_status["current_volume"] = manual_volume
             _target_volume = manual_volume
 
@@ -78,9 +83,21 @@ def _read_noise() -> float:
     return _raw_noise_db
 
 
-def decide_crowd_level(person: int, db: float, prev: str) -> str:
-    """히스테리시스 적용: 이전 상태(prev)를 알아야 경계값에서 안 흔들린다."""
+def decide_crowd_level(person: int | None, db: float, prev: str) -> str:
+    """히스테리시스 적용: 이전 상태(prev)를 알아야 경계값에서 안 흔들린다.
+    person=None 이면 인원수 조건 없이 dB 만으로 판단한다. (카메라 인원수를 범위에서 빼면서 person_count 가 늘 0 이라
+    예전 코드는 busy 가 절대 나오지 않았다)"""
     th = config.TH
+    if person is None:
+        if prev == "busy":
+            return "busy" if db > th["busy_out"]["db"] else "normal"
+        if prev == "quiet":
+            return "quiet" if db < th["quiet_out"]["db"] else "normal"
+        if db >= th["busy_in"]["db"]:
+            return "busy"
+        if db <= th["quiet_in"]["db"]:
+            return "quiet"
+        return "normal"
     if prev == "busy":
         if person <= th["busy_out"]["person"] and db <= th["busy_out"]["db"]:
             return "normal"
@@ -101,7 +118,9 @@ def control_tick() -> dict:
     global _target_volume
     with lock:
         raw = _read_noise()
-        person = store_status["person_count"]
+        person_active = (_last_person_time is not None
+                         and time.monotonic() - _last_person_time <= config.PERSON_TIMEOUT_SEC)
+        person = store_status["person_count"] if person_active else None
 
         # 1) 순간 소음 제거(중앙값) -> 지수 평활
         _noise_samples.append(raw)
@@ -119,7 +138,7 @@ def control_tick() -> dict:
         # 3) 자동 모드일 때만 목표 볼륨/트랙 갱신 + 단계적 페이드
         if store_status["auto_mode"]:
             preset = config.PLAYLIST_POOL[level]
-            _target_volume = preset["volume"]
+            _target_volume = min(preset["volume"], config.MAX_VOLUME)   # 볼륨 상한 (소음 경쟁 방지)
             if level != prev:   # 상태가 바뀔 때만 곡 교체 (곡이 계속 끊기는 것 방지)
                 store_status["current_track"] = random.choice(preset["tracks"])
             cur = store_status["current_volume"]
