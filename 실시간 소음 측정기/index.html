@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>소음 측정기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@200;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="Style.css">
+</head>
+<body>
+<main>
+  <h1>소음 측정기</h1>
+
+  <section class="read" aria-live="off">
+    <div class="num" id="num">--<small>dB</small></div>
+    <div class="state" id="state">측정을 시작하면 소리 크기가 표시됩니다</div>
+    <div class="bar"><i id="needle"></i></div>
+    <div class="scale"><span>20</span><span>50</span><span>80</span><span>110</span></div>
+    <canvas id="cv" aria-label="최근 60초 소음 변화 그래프"></canvas>
+    <p class="cap">최근 60초</p>
+  </section>
+
+  <dl class="stats">
+    <div><dt>최소</dt><dd id="smin">--</dd></div>
+    <div><dt>평균</dt><dd id="savg">--</dd></div>
+    <div><dt>최대</dt><dd id="smax">--</dd></div>
+  </dl>
+
+  <div class="ctrl">
+    <button class="primary" id="toggle">측정 시작</button>
+    <button id="reset">기록 초기화</button>
+  </div>
+  <div class="msg" id="msg" role="alert"></div>
+
+  <section class="cal">
+    <label for="off"><span>보정값</span><span id="offv">90</span></label>
+    <input type="range" id="off" min="60" max="120" value="90">
+    <p>휴대폰과 브라우저마다 마이크 감도가 달라서 표시값은 추정치입니다. 소음 측정 앱이나 소음계와 비교해 보정값을 맞추면 더 정확해집니다.</p>
+  </section>
+
+  <h2>소리 크기 기준</h2>
+  <ul class="ref">
+    <li><span>속삭임, 조용한 방</span><b>30 dB</b></li>
+    <li><span>도서관, 조용한 사무실</span><b>40 dB</b></li>
+    <li><span>일상 대화</span><b>60 dB</b></li>
+    <li><span>번화가, 달리는 지하철 안</span><b>80 dB</b></li>
+    <li><span>이 이상 장시간 노출 시 청력 손상 위험</span><b>85 dB</b></li>
+    <li><span>자동차 경적, 콘서트장</span><b>100 dB</b></li>
+  </ul>
+  <p class="note">소리는 기기 안에서만 분석하며 녹음하거나 전송하지 않습니다.</p>
+</main>
+
+<script src="main.js"></script>
+</body>
+</html>
