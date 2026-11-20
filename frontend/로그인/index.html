@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>매장로그 · 로그인</title>
+<link rel="stylesheet" href="Style.css">
+</head>
+<body>
+<main class="card">
+  <h1 class="brand">매장로그</h1>
+  <p class="desc" id="desc">점주 계정으로 로그인하세요.</p>
+  <div class="tabs" role="tablist">
+    <button class="on" id="tabLogin" role="tab" type="button">로그인</button>
+    <button id="tabSignup" role="tab" type="button">점주 회원가입</button>
+  </div>
+
+  <section id="login">
+    <label for="lEmail">이메일</label>
+    <input id="lEmail" type="email" placeholder="example@email.com" autocomplete="email">
+    <div class="err" id="lEmailErr"></div>
+    <label for="lPw">비밀번호</label>
+    <input id="lPw" type="password" placeholder="비밀번호 입력" autocomplete="current-password">
+    <div class="err" id="lPwErr"></div>
+    <button class="submit" id="loginBtn" type="button">로그인</button>
+  </section>
+
+  <section id="signup" class="hidden">
+    <label for="sEmail">이메일</label>
+    <input id="sEmail" type="email" placeholder="example@email.com" autocomplete="email">
+    <div class="err" id="sEmailErr"></div>
+    <label for="sPw">비밀번호</label>
+    <input id="sPw" type="password" placeholder="8자 이상, 영문+숫자" autocomplete="new-password">
+    <div class="err" id="sPwErr"></div>
+
+    <div class="lbl">타겟 연령대</div>
+    <div class="chips" data-key="age"></div>
+    <div class="lbl">타겟 성비</div>
+    <div class="chips" data-key="gender"></div>
+    <div class="lbl">매장 업종</div>
+    <div class="chips" data-key="type"></div>
+    <div class="lbl">분위기</div>
+    <div class="chips" data-key="mood"></div>
+    <div class="err" id="sSelErr"></div>
+    <button class="submit" id="signupBtn" type="button">회원가입</button>
+  </section>
+
+  <div class="msg" id="msg" role="status"></div>
+</main>
+
+<script src="main.js"></script>
+</body>
+</html>
