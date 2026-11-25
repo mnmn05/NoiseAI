@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>매장로그 · 로그인</title>
 <link rel="stylesheet" href="Style.css">
+<script src="../common/api.js"></script>
 </head>
 <body>
 <main class="card">
@@ -50,6 +51,7 @@
     <div class="chips" data-key="mood"></div>
     <div class="lbl">소음 대응 방식 (안정형: 시끄러울수록 잔잔하게 / 활기형: 시끄러울수록 경쾌하게)</div>
     <div class="chips" data-key="noise_strategy"></div>
+    <div class="err" id="sSelErr"></div>  
     <button class="submit" id="signupBtn" type="button">회원가입</button>
   </section>
 

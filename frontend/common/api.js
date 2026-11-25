@@ -4,7 +4,7 @@
   var LOCAL_API = "http://localhost:8000";
   var K_BASE = "noiseai-api-base", K_TOKEN = "noiseai-token", K_USER = "noiseai-user";
   var LOGIN_PAGE = "../로그인/index.html";
-  var DASHBOARD_PAGE = "../매장로그인-대시보드/index.html";
+    var DASHBOARD_PAGE = "../매장로그_소음 관리/index.html";
 
   function store(k, v) {
     try {

@@ -54,4 +54,5 @@ label.opt{position:relative;flex-direction:row}
 .side{padding:36px 32px}.side h2{font-size:22px;margin:0 0 4px;color:var(--tx)}.side>p{margin:0 0 16px}
 .pw{display:flex;gap:8px;align-items:center}.pw input{flex:1}
 .lnk{border:0;background:none;color:var(--ac);cursor:pointer;font:inherit;font-size:13px;padding:0}
+a.chip{text-decoration:none;display:inline-block}
 @media(max-width:640px){.split{grid-template-columns:1fr}.brand{padding:24px}.side{padding:24px}}

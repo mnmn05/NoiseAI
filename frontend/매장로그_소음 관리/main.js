@@ -1,4 +1,4 @@
-var KEY = "maejanglog-noise-v1";
+var me = NoiseAPI.requireLogin();
 var tab = "dash", fCat = "전체", fStore = "전체";
 
 function seed() {
