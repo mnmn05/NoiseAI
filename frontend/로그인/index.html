@@ -33,15 +33,23 @@
     <input id="sPw" type="password" placeholder="8자 이상, 영문+숫자" autocomplete="new-password">
     <div class="err" id="sPwErr"></div>
 
+        <label for="sStore">매장 이름</label>
+    <input id="sStore" type="text" maxlength="100" placeholder="예: 모닝브루 본점">
+    <div class="err" id="sStoreErr"></div>
+    <label for="sSeats">좌석 수</label>
+    <input id="sSeats" type="number" min="0" max="1000" value="20">
+    <div class="err" id="sSeatsErr"></div>
+
     <div class="lbl">타겟 연령대</div>
-    <div class="chips" data-key="age"></div>
+    <div class="chips" data-key="age_group"></div>
     <div class="lbl">타겟 성비</div>
     <div class="chips" data-key="gender"></div>
     <div class="lbl">매장 업종</div>
-    <div class="chips" data-key="type"></div>
+    <div class="chips" data-key="category"></div>
     <div class="lbl">분위기</div>
     <div class="chips" data-key="mood"></div>
-    <div class="err" id="sSelErr"></div>
+    <div class="lbl">소음 대응 방식 (안정형: 시끄러울수록 잔잔하게 / 활기형: 시끄러울수록 경쾌하게)</div>
+    <div class="chips" data-key="noise_strategy"></div>
     <button class="submit" id="signupBtn" type="button">회원가입</button>
   </section>
 

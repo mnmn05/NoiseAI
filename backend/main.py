@@ -87,6 +87,14 @@ app.include_router(sales.router)         # (신규) POS 매출 업로드
 if bgm_router is not None:
     bgm_router.install(app)              # T2: /api/bgm/playlist + /bgm/<파일명>
 
+if bgm_router is not None:
+    bgm_router.install(app)              # T2: /api/bgm/playlist + /bgm/<파일명>
+
+# ↓ 추가
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.is_dir():
+    app.mount("/app", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
 
 # ------------------------------------------------------------ API
 @app.get("/")

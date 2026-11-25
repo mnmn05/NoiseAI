@@ -41,7 +41,9 @@ function render(sp){
 
 const fmt=x=>{x=Math.max(0,x|0);return Math.floor(x/60)+':'+String(x%60).padStart(2,'0')};
 const pos=()=>playing?Math.min(ac.currentTime-t0,dur):off;
+
 function setMsg(t){$('msg').textContent=t}
+
 function ensureAC(){
   if(!ac){ac=new(window.AudioContext||window.webkitAudioContext)();gain=ac.createGain();an=ac.createAnalyser();an.fftSize=128;
     gain.gain.value=$('vol').value/100;an.connect(gain);gain.connect(ac.destination)}
@@ -62,33 +64,39 @@ function list(){
   ui();
 }
 function halt(){const s=src;src=null;if(s){s.onended=null;try{s.stop()}catch(e){}}}
+
 function play(){
-  if(!buf)return;ensureAC();if(off>=dur-.05)off=0;halt();
+  if(!buf)return;ensureAC();if(off>=dur-.05)off=0;halt();const fresh=off<.05;
   const s=ac.createBufferSource();s.buffer=buf;s.connect(an);
-  s.onended=()=>{if(s!==src)return;src=null;playing=false;off=0;go(1,true)};
+  s.onended=()=>{if(s!==src)return;src=null;playing=false;off=0;advance()};
   s.start(0,off);src=s;t0=ac.currentTime-off;playing=true;ui();
+  if(fresh)onTrackStart(T[cur]);
 }
+
 function pause(){if(!playing)return;off=pos();halt();playing=false;ui()}
 async function load(i,auto){
   halt();playing=false;off=0;cur=i;buf=null;dur=0;ui();$('dur').textContent='0:00';$('seek').value=0;
   const t=T[i];
-  if(!t.buf){setMsg('곡을 준비하는 중이에요…');try{t.buf=await render(t.spec)}catch(e){setMsg('이 곡을 만들지 못했어요.');return}}
+  if(!t.buf){setMsg('곡을 준비하는 중이에요…');try{t.buf=t.url?await fetchBuf(t.url):await render(t.spec)}catch(e){setMsg('이 곡을 불러오지 못했어요. '+(e.message||''));return}}
   if(cur!==i)return;
   buf=t.buf;dur=buf.duration;$('dur').textContent=fmt(dur);setMsg('');list();
   if(auto)play();
 }
+
 function go(d,auto){
   if(auto&&rep){load(cur,true);return}
   let n;if(shuf&&T.length>1){do{n=Math.floor(Math.random()*T.length)}while(n===cur)}else n=(cur+d+T.length)%T.length;
   load(n,playing||auto);
 }
+
 $('play').onclick=()=>{ensureAC();playing?pause():play()};
 $('next').onclick=()=>{ensureAC();go(1,false)};
 $('prev').onclick=()=>{ensureAC();if(pos()>3&&buf){off=0;playing?play():ui()}else go(-1,false)};
 $('shuf').onclick=e=>{shuf=!shuf;e.currentTarget.setAttribute('aria-pressed',shuf)};
 $('rep').onclick=e=>{rep=!rep;e.currentTarget.setAttribute('aria-pressed',rep)};
 $('seek').oninput=e=>{if(!buf)return;off=e.target.value/1000*dur;if(playing)play()};
-$('vol').oninput=e=>{if(gain)gain.gain.value=e.target.value/100};
+$('vol').oninput=e=>{if(gain){gain.gain.cancelScheduledValues(0);gain.gain.value=e.target.value/100}if($('autovol').checked){$('autovol').checked=false;volInfo('직접 조절 중 (자동 볼륨 꺼짐)')}};
+
 $('file').onchange=async e=>{
   ensureAC();let ok=0;
   for(const f of e.target.files){
@@ -99,9 +107,11 @@ $('file').onchange=async e=>{
   if(ok){list();setMsg(ok+'곡을 추가했어요.')}
   e.target.value='';
 };
+
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();$('play').click()}});
 
 const cv=$('viz'),cx=cv.getContext('2d');
+
 function frame(){
   const css=getComputedStyle(document.documentElement),col=css.getPropertyValue('--accent').trim()||'#1f6b57';
   cx.clearRect(0,0,cv.width,cv.height);cx.fillStyle=col;
@@ -112,4 +122,65 @@ function frame(){
   if(buf){const p=pos();$('cur').textContent=fmt(p);$('seek').value=Math.round(p/dur*1000)}
   requestAnimationFrame(frame);
 }
-list();load(0,false);frame();
+
+const API=window.NoiseAPI, srv=API&&API.session().token?API.session().user:null;
+function srvMsg(t,bad){const el=$('srv');if(!el)return;el.textContent=t;el.style.color=bad?'#c0392b':''}
+function volInfo(t){$('volinfo').textContent=t}
+async function fetchBuf(url){
+  const r=await fetch(url);
+  if(!r.ok)throw new Error('음원 응답 '+r.status);
+  const ab=await r.arrayBuffer();
+  return await new OfflineAudioContext(2,1,44100).decodeAudioData(ab);
+}
+// 곡 시작 = 다음 AI 곡 생성 요청 (서버가 중복 요청은 막아 줌)
+async function onTrackStart(t){
+  if(!srv)return;
+  if(t&&t.aiId){API.markPlayed(t.aiId).catch(()=>{})}
+  try{
+    const g=await API.generateTrack(null);
+    srvMsg(g.already_generating?'다음 AI 곡을 만드는 중이에요':'다음 AI 곡 생성을 요청했어요 (#'+g.id+')');
+  }catch(e){srvMsg('AI 곡 생성 요청 실패: '+e.message,true)}
+}
+// 곡이 끝나면: 완성된 AI 곡이 있으면 그걸, 없으면 다음 기본곡
+let advancing=false;
+async function advance(){
+  if(advancing)return;advancing=true;
+  try{
+    if(srv&&!rep){
+      let nt=null;
+      try{nt=await API.nextTrack()}catch(e){srvMsg('AI 곡 확인 실패: '+e.message,true)}
+      if(nt&&nt.audio_url&&!T.some(x=>x.aiId===nt.id)){
+        T.splice(cur+1,0,{title:'AI 생성곡 #'+nt.id,artist:(nt.prompt||'').slice(0,60),hue:(nt.id*47)%360,url:API.absUrl(nt.audio_url),aiId:nt.id});
+        list();await load(cur+1,true);return;
+      }
+    }
+    go(1,true);
+  }finally{advancing=false}
+}
+async function loadBgm(){
+  try{
+    const r=await API.bgmPlaylist();
+    const ok=(r.tracks||[]).filter(x=>x.available);
+    if(!ok.length){srvMsg('서버에 기본 BGM 파일이 없어서 내장 생성음악으로 시작해요');return false}
+    T.splice(0,T.length,...ok.map((x,i)=>({title:x.title,artist:'기본 BGM · '+x.tags.slice(0,3).join(', '),hue:(i*67+20)%360,url:API.absUrl(x.url)})));
+    srvMsg('기본 BGM '+ok.length+'곡 → 이후 AI 생성곡이 이어서 재생돼요');
+    return true;
+  }catch(e){srvMsg('기본 BGM 목록을 못 받았어요: '+e.message,true);return false}
+}
+// 3초마다 서버 볼륨 반영 (상한 넘지 않게, 1초 동안 부드럽게)
+async function pollVolume(){
+  try{
+    const s=await API.status();
+    const target=Math.min(s.current_volume,s.max_volume==null?100:s.max_volume);
+    if($('autovol').checked){
+      $('vol').value=target;
+      if(gain&&ac){const g=gain.gain,t=ac.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(target/100,t+1)}
+      volInfo('자동 '+target+' (혼잡도 '+({quiet:'한산',normal:'보통',busy:'혼잡'}[s.crowd_level]||s.crowd_level)+', 상한 '+s.max_volume+')');
+    }
+  }catch(e){volInfo('서버 볼륨을 못 받았어요: '+e.message)}
+}
+(async()=>{
+  if(srv){await loadBgm();pollVolume();setInterval(pollVolume,3000)}
+  else{srvMsg('로그인하면 매장 맞춤 AI 음악과 자동 볼륨이 켜져요');$('autovol').checked=false;$('autovol').disabled=true;volInfo('로그인 필요')}
+  list();load(0,false);frame();
+})();

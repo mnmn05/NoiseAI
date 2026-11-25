@@ -4,6 +4,17 @@
   var numEl=$('num'), stateEl=$('state'), needle=$('needle'), cv=$('cv'), msg=$('msg'), btn=$('toggle');
   var ac=null, analyser=null, stream=null, buf=null, raf=0, running=false;
   var offset=90, smooth=null, hist=[], blockMax=0, lastPush=0, stats;
+  var SEND_MS=3000, sendSum=0, sendN=0, lastSend=0, sending=false, sentCount=0;
+  var syncEl=$('sync'), user=(window.NoiseAPI&&NoiseAPI.session().token)?NoiseAPI.session().user:null;
+  function setSync(t,bad){if(!syncEl)return;syncEl.textContent=t;syncEl.style.color=bad?'var(--bad)':'';}
+  if(user) setSync((user.store_name||user.email)+' 매장으로 전송 준비됨 · 측정을 시작하세요');
+  async function flush(){
+    if(!user||sending||!sendN) return;
+    var avg=sendSum/sendN; sendSum=0; sendN=0; sending=true;
+    try{ await NoiseAPI.sendNoise(avg); sentCount++; setSync('서버 전송 중 · 마지막 '+avg.toFixed(1)+' dB · '+sentCount+'회 전송'); }
+    catch(e){ setSync('전송 실패: '+e.message, true); }
+    finally{ sending=false; }
+  }
 
   function resetStats(){stats={min:Infinity,max:-Infinity,sum:0,n:0,warm:0};hist=[];['smin','savg','smax'].forEach(function(i){$(i).textContent='--'});draw();}
   resetStats();
@@ -56,6 +67,9 @@
     smooth+=(db-smooth)*(db>smooth?0.5:0.08);
     show(smooth);
     blockMax=Math.max(blockMax,smooth);
+    if(stats.warm>4){sendSum+=smooth;sendN++;}
+    if(ts-lastSend>=SEND_MS){lastSend=ts;flush();}
+
     if(ts-lastPush>=STEP){
       lastPush=ts; hist.push(blockMax); if(hist.length>N) hist.shift();
       if(++stats.warm>4){
@@ -87,7 +101,7 @@
     var src=ac.createMediaStreamSource(stream);
     analyser=ac.createAnalyser(); analyser.fftSize=2048; src.connect(analyser);
     buf=new Float32Array(analyser.fftSize);
-    smooth=null; blockMax=0; lastPush=0; running=true;
+    smooth=null; blockMax=0; lastPush=0; sendSum=0; sendN=0; lastSend=performance.now(); running=true;
     btn.textContent='측정 중지';
     raf=requestAnimationFrame(loop);
   }
@@ -98,6 +112,7 @@
     stream=null; ac=null;
     btn.textContent='측정 시작';
     stateEl.textContent='측정이 중지되었습니다';
+    sendSum=0; sendN=0; if(user) setSync('측정 중지 · 전송 멈춤 ('+sentCount+'회 전송)');
   }
 
   btn.addEventListener('click',function(){running?stop():start()});

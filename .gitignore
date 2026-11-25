@@ -16,3 +16,4 @@ __pycache__/
 .env
 noiseai.db
 backend/media/
+!backend/assets/bgm/*.mp3
