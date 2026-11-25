@@ -1,177 +1,161 @@
 var me = NoiseAPI.requireLogin();
-var tab = "dash", fCat = "전체", fStore = "전체";
+var tab = "dash", day = today(), timer = null;
+var cache = { status: null, report: null, logs: [], user: null, options: null };
+var LEVEL = { quiet: ["한산", "ok"], normal: ["보통", "warn"], busy: ["혼잡", "bad"], unknown: ["정보 없음", ""] };
 
-function seed() {
-  var cats = { "카페": 60, "음식점": 70, "주점": 80, "헬스장": 75, "독서실": 45 };
-  var stores = [
-    { id: 1, name: "모닝브루 본점", cat: "카페" },
-    { id: 2, name: "골목식당", cat: "음식점" },
-    { id: 3, name: "달빛포차", cat: "주점" },
-    { id: 4, name: "스퀘어핏", cat: "헬스장" },
-    { id: 5, name: "집중의 방", cat: "독서실" }
-  ];
-  var base = { 1: 58, 2: 69, 3: 82, 4: 74, 5: 41 }, recs = [], s = 7, id = 1;
-  function rnd() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
-  for (var d = 6; d >= 0; d--) {
-    stores.forEach(function (st) {
-      var t = new Date(); t.setDate(t.getDate() - d); t.setHours(14, 0, 0, 0);
-      recs.push({ id: id++, sid: st.id, db: Math.round((base[st.id] + (rnd() * 8 - 3)) * 10) / 10, t: t.toISOString() });
-    });
-  }
-  return { cats: cats, stores: stores, recs: recs, nid: 6, rid: id };
-}
-var S;
-try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) { S = null; }
-if (!S || !S.stores) S = seed();
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function today() { var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); }
+function esc(v) { return String(v == null ? "" : v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function f1(n) { return n == null ? "-" : Number(n).toFixed(1); }
+function won(n) { return n == null ? "-" : Number(n).toLocaleString("ko-KR") + "원"; }
+function hh(h) { return h == null ? "-" : h + "시"; }
+function fmt(t) { return new Date(t).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+function tag(level) { var l = LEVEL[level] || LEVEL.unknown; return '<span class="tag ' + l[1] + '">' + l[0] + "</span>"; }
+function errBox(e) { return '<div class="card"><p class="bad">' + esc(e.message || e) + "</p></div>"; }
 
-function esc(v) { return String(v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
-function avg(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; }
-function f1(n) { return n == null ? "-" : n.toFixed(1); }
-function fmt(t) { return new Date(t).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
-function store(id) { return S.stores.filter(function (s) { return s.id === id; })[0]; }
-function recsOf(sid) { return S.recs.filter(function (r) { return r.sid === sid; }); }
-function status(db, cat) {
-  if (db == null) return '<span class="tag">기록 없음</span>';
-  var l = S.cats[cat];
-  if (db > l) return '<span class="tag bad">기준 초과</span>';
-  if (db > l - 5) return '<span class="tag warn">주의</span>';
-  return '<span class="tag ok">양호</span>';
-}
-function color(db, cat) { var l = S.cats[cat]; return db > l ? "var(--bad)" : db > l - 5 ? "var(--warn)" : "var(--ok)"; }
-
-function trend() {
-  var days = [], i;
-  for (i = 6; i >= 0; i--) { var d = new Date(); d.setDate(d.getDate() - i); days.push(d.toDateString()); }
-  var vals = days.map(function (ds) { return avg(S.recs.filter(function (r) { return new Date(r.t).toDateString() === ds; }).map(function (r) { return r.db; })); });
-  var pts = [], W = 560, H = 160, lo = 30, hi = 100;
-  vals.forEach(function (v, i) { if (v != null) pts.push([30 + i * (W - 50) / 6, H - 24 - (v - lo) / (hi - lo) * (H - 40), v, i]); });
-  var g = [40, 60, 80, 100].map(function (y) { var py = H - 24 - (y - lo) / (hi - lo) * (H - 40); return '<line x1="30" x2="' + (W - 20) + '" y1="' + py + '" y2="' + py + '" stroke="var(--bd)"/><text x="4" y="' + (py + 4) + '" font-size="10" fill="var(--mu)">' + y + '</text>'; }).join("");
-  var xl = days.map(function (ds, i) { var d = new Date(ds); return '<text x="' + (30 + i * (W - 50) / 6) + '" y="' + (H - 6) + '" font-size="10" fill="var(--mu)" text-anchor="middle">' + (d.getMonth() + 1) + "/" + d.getDate() + "</text>"; }).join("");
-  var line = pts.map(function (p) { return p[0] + "," + p[1]; }).join(" ");
-  var dots = pts.map(function (p) { return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4" fill="var(--ac)"/><text x="' + p[0] + '" y="' + (p[1] - 9) + '" font-size="10" fill="var(--tx)" text-anchor="middle">' + p[2].toFixed(0) + "</text>"; }).join("");
-  return '<svg viewBox="0 0 ' + W + " " + H + '">' + g + xl + '<polyline points="' + line + '" fill="none" stroke="var(--ac)" stroke-width="2"/>' + dots + "</svg>";
+// 차트: 막대 = 매출, 선 = 시간대 평균 dB
+function hourChart(hours) {
+  var W = 640, H = 220, L = 34, R = 44, T = 14, B = 24, lo = 30, hi = 100;
+  var n = hours.length || 24, step = (W - L - R) / n;
+  var maxSales = Math.max.apply(null, hours.map(function (h) { return h.sales_amount || 0; }).concat([1]));
+  var y = function (db) { return T + (1 - (db - lo) / (hi - lo)) * (H - T - B); };
+  var g = [40, 60, 80, 100].map(function (v) {
+    return '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--bd)"/><text x="4" y="' + (y(v) + 4) + '" font-size="10" fill="var(--mu)">' + v + "</text>";
+  }).join("");
+  var bars = hours.map(function (h, i) {
+    if (!h.sales_amount) return "";
+    var bh = h.sales_amount / maxSales * (H - T - B);
+    return '<rect x="' + (L + i * step + 2) + '" y="' + (H - B - bh) + '" width="' + Math.max(1, step - 4) + '" height="' + bh + '" fill="var(--acs)"><title>' + h.hour + "시 매출 " + won(h.sales_amount) + "</title></rect>";
+  }).join("");
+  var pts = hours.map(function (h, i) { return h.avg_db == null ? null : [L + i * step + step / 2, y(Math.min(hi, Math.max(lo, h.avg_db))), h]; }).filter(Boolean);
+  var line = pts.length > 1 ? '<polyline points="' + pts.map(function (p) { return p[0] + "," + p[1]; }).join(" ") + '" fill="none" stroke="var(--ac)" stroke-width="2"/>' : "";
+  var dots = pts.map(function (p) { return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.5" fill="var(--ac)"><title>' + p[2].hour + "시 평균 " + f1(p[2].avg_db) + " dB (" + p[2].crowd_label + ")</title></circle>"; }).join("");
+  var xl = hours.map(function (h, i) { return i % 3 ? "" : '<text x="' + (L + i * step + step / 2) + '" y="' + (H - 6) + '" font-size="10" fill="var(--mu)" text-anchor="middle">' + h.hour + "</text>"; }).join("");
+  var legend = '<text x="' + (W - R + 4) + '" y="' + (T + 8) + '" font-size="10" fill="var(--ac)">— dB</text><text x="' + (W - R + 4) + '" y="' + (T + 22) + '" font-size="10" fill="var(--mu)">▮ 매출</text>';
+  return '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="시간대별 평균 소음과 매출">' + g + bars + line + dots + xl + legend + "</svg>";
 }
 
 function vDash() {
-  var all = S.recs.map(function (r) { return r.db; });
-  var today = S.recs.filter(function (r) { return new Date(r.t).toDateString() === new Date().toDateString(); }).map(function (r) { return r.db; });
-  var over = S.stores.filter(function (s) { var a = avg(recsOf(s.id).map(function (r) { return r.db; })); return a != null && a > S.cats[s.cat]; }).length;
-  var catRows = Object.keys(S.cats).map(function (c) {
-    var a = avg(S.recs.filter(function (r) { var s = store(r.sid); return s && s.cat === c; }).map(function (r) { return r.db; }));
-    var lim = S.cats[c];
-    return '<div class="row"><span class="n">' + esc(c) + '</span><div class="bar"><i style="width:' + (a == null ? 0 : Math.min(100, a)) + "%;background:" + (a == null ? "var(--bd)" : color(a, c)) + '"></i><b style="left:' + lim + '%"></b></div><span class="v">' + f1(a) + " dB</span></div>";
-  }).join("");
-  var recent = S.recs.slice().sort(function (a, b) { return new Date(b.t) - new Date(a.t); }).slice(0, 6).map(function (r) {
-    var s = store(r.sid) || { name: "(삭제됨)", cat: "" };
-    return "<tr><td>" + esc(s.name) + "</td><td>" + r.db + " dB</td><td class=\"mu\">" + fmt(r.t) + "</td></tr>";
+  var s = cache.status, r = cache.report;
+  if (!r) return '<div class="card"><p class="mu">불러오는 중…</p></div>';
+  var sum = r.summary, ov = r.overall;
+  var nowDb = s ? f1(s.noise_level_db) : "-";
+  var src = s ? (s.noise_source === "mic" ? "마이크 측정값" : "측정기 꺼짐 · 테스트용 더미값") : "";
+  var recent = cache.logs.slice(-8).reverse().map(function (l) {
+    return "<tr><td>" + fmt(l.created_at) + "</td><td><b>" + f1(l.noise_db) + " dB</b></td></tr>";
   }).join("");
   return '<div class="grid k">' +
-    '<div class="card"><h2>전체 매장</h2><div class="big">' + S.stores.length + '</div></div>' +
-    '<div class="card"><h2>전체 평균 소음</h2><div class="big">' + f1(avg(all)) + '<span class="mu"> dB</span></div></div>' +
-    '<div class="card"><h2>오늘 평균</h2><div class="big">' + f1(avg(today)) + '<span class="mu"> dB</span></div></div>' +
-    '<div class="card"><h2>기준 초과 매장</h2><div class="big ' + (over ? "bad" : "ok") + '">' + over + "</div></div></div>" +
-    '<div class="grid two"><div class="card"><h2>카테고리별 평균 (세로선 = 기준)</h2>' + catRows + "</div>" +
-    '<div class="card"><h2>최근 7일 평균 추이 (dB)</h2>' + trend() + "</div></div>" +
-    '<div class="card"><h2>최근 기록</h2><div class="tw"><table><tbody>' + (recent || '<tr><td class="empty">기록이 없습니다</td></tr>') + "</tbody></table></div></div>";
+    '<div class="card"><h2>지금 소음</h2><div class="big">' + nowDb + '<span class="mu"> dB</span></div><div class="mu">' + (s ? tag(s.crowd_level) + " " + esc(src) : "") + "</div></div>" +
+    '<div class="card"><h2>' + (r.date === today() ? "오늘" : esc(r.date)) + ' 평균</h2><div class="big">' + f1(ov.avg_db) + '<span class="mu"> dB</span></div><div class="mu">측정 ' + ov.samples + "회 · 최고 " + f1(ov.max_db) + " dB</div></div>" +
+    '<div class="card"><h2>가장 붐빈 시간</h2><div class="big bad">' + hh(sum.busiest_hour) + '</div><div class="mu">가장 한산: ' + hh(sum.quietest_hour) + "</div></div>" +
+    '<div class="card"><h2>매출</h2><div class="big">' + won(ov.total_sales) + '</div><div class="mu">최고 매출 시간 ' + hh(sum.peak_sales_hour) +
+    (sum.noise_sales_correlation != null ? " · 소음-매출 상관 " + sum.noise_sales_correlation : "") + "</div></div></div>" +
+    '<div class="card"><h2>시간대별 평균 소음 · 매출</h2>' + hourChart(r.hours) +
+    (sum.suggestion ? '<p class="mu">💡 ' + esc(sum.suggestion) + "</p>" : '<p class="mu">소음 측정기를 켜 두면 시간대별 기록이 쌓입니다.</p>') + "</div>" +
+    '<div class="card"><h2>최근 측정 (3초마다)</h2><div class="tw"><table><tbody>' + (recent || '<tr><td class="empty">아직 기록이 없습니다. <a href="../실시간 소음 측정기/index.html">소음 측정기</a>를 켜 주세요.</td></tr>') + "</tbody></table></div></div>";
 }
 
-function chips(list, cur, act) {
-  return '<div class="chips">' + ["전체"].concat(list).map(function (c) { return '<button class="chip ' + (c === cur ? "on" : "") + '" data-act="' + act + '" data-v="' + esc(c) + '">' + esc(c) + "</button>"; }).join("") + "</div>";
-}
-
-function vStores() {
-  var catOpts = Object.keys(S.cats).map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("");
-  var list = S.stores.filter(function (s) { return fCat === "전체" || s.cat === fCat; });
-  var rows = list.map(function (s) {
-    var rs = recsOf(s.id), a = avg(rs.map(function (r) { return r.db; })), last = rs.slice().sort(function (x, y) { return new Date(y.t) - new Date(x.t); })[0];
-    return "<tr><td><b>" + esc(s.name) + "</b></td><td>" + esc(s.cat) + '</td><td>' + f1(a) + " dB</td><td>" + (last ? last.db + " dB" : "-") + "</td><td>" + status(a, s.cat) + '</td><td><button class="x" data-act="delStore" data-v="' + s.id + '" title="삭제">✕</button></td></tr>';
+function vReport() {
+  var r = cache.report;
+  var picker = '<form data-form="day"><label>날짜<input type="date" name="day" value="' + day + '" max="' + today() + '"></label><button class="btn">조회</button></form>';
+  if (!r) return '<div class="card">' + picker + '<p class="mu">불러오는 중…</p></div>';
+  var rows = r.hours.filter(function (h) { return h.samples || h.sales_amount != null; }).map(function (h) {
+    return "<tr><td>" + h.hour + "시</td><td><b>" + f1(h.avg_db) + "</b></td><td>" + f1(h.max_db) + "</td><td>" + f1(h.min_db) + "</td><td>" + tag(h.crowd_level) + "</td><td>" + won(h.sales_amount) + "</td><td>" + (h.order_count == null ? "-" : h.order_count) + "</td><td>" + h.plays + "</td></tr>";
   }).join("");
-  return '<div class="card"><h2>매장 추가</h2><form data-form="store"><label>매장명<input name="name" required maxlength="30"></label><label>카테고리<select name="cat">' + catOpts + '</select></label><button class="btn">추가</button></form></div>' +
-    '<div class="card"><h2>카테고리 추가</h2><form data-form="cat"><label>이름<input name="name" required maxlength="12"></label><label>권장 기준 (dB)<input name="lim" type="number" min="20" max="120" value="65" required></label><button class="btn">추가</button></form></div>' +
-    "";
+  return '<div class="card"><h2>날짜 선택</h2>' + picker + "</div>" +
+    '<div class="card"><h2>' + esc(r.date) + ' 시간대별 리포트</h2><div class="tw"><table><thead><tr><th>시간</th><th>평균 dB</th><th>최고</th><th>최저</th><th>혼잡도</th><th>매출</th><th>주문</th><th>재생 곡</th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="8" class="empty">이 날짜에는 기록이 없습니다</td></tr>') + "</tbody></table></div></div>" +
+    '<div class="card"><h2>POS 매출 CSV 올리기</h2><form data-form="sales"><label>CSV 파일 (시간·매출·주문수 또는 결제일시·결제금액)<input type="file" name="file" accept=".csv,text/csv" required></label><button class="btn">업로드</button></form><p class="mu" id="salesMsg"></p></div>';
 }
 
-function vLog() {
-  var now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  var opts = S.stores.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + " (" + esc(s.cat) + ")</option>"; }).join("");
-  var names = S.stores.map(function (s) { return s.name; });
-  var rows = S.recs.filter(function (r) { var s = store(r.sid); return s && (fStore === "전체" || s.name === fStore); })
-    .sort(function (a, b) { return new Date(b.t) - new Date(a.t); }).slice(0, 40).map(function (r) {
-      var s = store(r.sid);
-      return "<tr><td>" + fmt(r.t) + "</td><td>" + esc(s.name) + "</td><td>" + esc(s.cat) + '</td><td style="color:' + color(r.db, s.cat) + '"><b>' + r.db + ' dB</b></td><td><button class="x" data-act="delRec" data-v="' + r.id + '" title="삭제">✕</button></td></tr>';
-    }).join("");
-  return "" +
-    '<div class="card"><h2>기록 내역 (최근 40건)</h2>' + chips(names, fStore, "fStore") + '<div class="tw"><table><thead><tr><th>시각</th><th>매장</th><th>카테고리</th><th>평균 소음</th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="5" class="empty">기록이 없습니다</td></tr>') + "</tbody></table></div></div>";
+function opt(name, list, cur) {
+  return '<label>' + name[1] + '<select name="' + name[0] + '">' + list.map(function (v) { return "<option" + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>"; }).join("") + "</select></label>";
+}
+function vSettings() {
+  var u = cache.user, o = cache.options;
+  if (!u || !o) return '<div class="card"><p class="mu">불러오는 중…</p></div>';
+  var pub = u.public_id ? NoiseAPI.base() + "/api/public/status/" + u.public_id : "";
+  return '<div class="card"><h2>매장 설정 (음악 생성 프롬프트에 바로 반영됩니다)</h2><form data-form="store">' +
+    '<label>매장 이름<input name="store_name" maxlength="100" value="' + esc(u.store_name || "") + '"></label>' +
+    '<label>좌석 수<input name="total_seats" type="number" min="0" max="1000" value="' + (u.total_seats || 0) + '"></label>' +
+    opt(["category", "업종"], o.category, u.category) + opt(["mood", "분위기"], o.mood, u.mood) +
+    opt(["age_group", "타겟 연령대"], o.age_group, u.age_group) + opt(["gender", "타겟 성비"], o.gender, u.gender) +
+    opt(["noise_strategy", "소음 대응 방식"], o.noise_strategy, u.noise_strategy_ko) +
+    '<button class="btn">저장</button></form><p class="mu" id="storeMsg"></p></div>' +
+    (pub ? '<div class="card"><h2>손님용 한산 상태 링크</h2><p class="mu">이 주소를 가게 SNS·지도에 걸어 두면 손님이 지금 붐비는지 볼 수 있습니다.</p><p><a href="' + esc(pub) + '" target="_blank" rel="noopener">' + esc(pub) + "</a></p></div>" : "");
 }
 
-var OWN = "maejanglog-owners-v1", SES = "maejanglog-session-v1", authTab = "login";
-var owners = [], me = null;
-try { owners = JSON.parse(localStorage.getItem(OWN)) || []; me = JSON.parse(localStorage.getItem(SES)); } catch (e) { owners = []; me = null; }
-function digits(s) { return String(s).replace(/\D/g, ""); }
-function showErr(m) { var el = document.getElementById("err"); if (el) el.textContent = m; }
-function setMe(o) { me = o; try { localStorage.setItem(SES, JSON.stringify(o)); } catch (e) {} tab = "dash"; render(); }
-async function hash(pw, salt) { var b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + pw)); return Array.from(new Uint8Array(b)).map(function (x) { return x.toString(16).padStart(2, "0"); }).join(""); }
-async function doLogin(d) {
-  var em = d.get("email").trim().toLowerCase();
-  var o = owners.filter(function (x) { return x.email === em; })[0];
-  if (!o || !o.salt || (await hash(d.get("pw"), o.salt)) !== o.hash) { showErr("이메일 또는 비밀번호가 올바르지 않습니다."); return; }
-  setMe({ email: o.email, age: o.age, gender: o.gender, type: o.type, mood: o.mood });
-}
-async function doSignup(d) {
-  var em = d.get("email").trim().toLowerCase();
-  if (owners.some(function (x) { return x.email === em; })) { showErr("이미 가입된 이메일입니다."); return; }
-  if (d.get("pw") !== d.get("pw2")) { showErr("비밀번호가 일치하지 않습니다."); return; }
-  var salt = Math.random().toString(36).slice(2), hs = await hash(d.get("pw"), salt);
-  var o = { email: em, salt: salt, hash: hs, age: d.get("age"), gender: d.get("gender"), type: d.get("type"), mood: d.get("mood") };
-  owners.push(o);
-  try { localStorage.setItem(OWN, JSON.stringify(owners)); } catch (e) {}
-  setMe(o);
-}
-function grp(title, name, list) {
-  return '<div class="grp"><span>' + title + '</span><div class="opts">' + list.map(function (v) { return '<label class="opt"><input type="radio" name="' + name + '" value="' + v + '" required><span>' + v + "</span></label>"; }).join("") + "</div></div>";
-}
-function authView() {
-  document.getElementById("nav").innerHTML = "";
-  document.getElementById("who").innerHTML = "";
-  var lg = authTab === "login";
-  var tabs = '<div class="chips"><button class="chip ' + (lg ? "on" : "") + '" data-act="authTab" data-v="login">로그인</button><button class="chip ' + (lg ? "" : "on") + '" data-act="authTab" data-v="signup">점주 회원가입</button></div>';
-  var form = lg
-    ? '<form data-form="login" class="col"><label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호<div class="pw"><input name="pw" type="password" required autocomplete="current-password"><button type="button" class="lnk" data-act="pw">보기</button></div></label><button class="btn">로그인</button></form>'
-    : '<form data-form="signup" class="col"><label>이메일<input name="email" type="email" required autocomplete="email"></label><label>비밀번호 (8자 이상)<div class="pw"><input name="pw" type="password" minlength="8" required autocomplete="new-password"><button type="button" class="lnk" data-act="pw">보기</button></div></label><label>비밀번호 확인<input name="pw2" type="password" required autocomplete="new-password"></label>' +
-      grp("타겟 연령대", "age", ["10대", "20대", "30대 이상"]) + grp("타겟 성비", "gender", ["여성 위주", "남성 위주", "무관"]) + grp("매장 업종", "type", ["카페", "주점", "레스토랑"]) + grp("분위기", "mood", ["감성", "신나는", "차분한"]) +
-      '<button class="btn">가입하기</button></form>';
-  document.getElementById("app").innerHTML = '<div class="split"><div class="brand"><div style="font-size:40px">🔉</div><h2>매장로그</h2><p>매장의 소음을 기록하고<br>카테고리별로 한눈에 관리하세요.</p></div><div class="side"><h2>' + (lg ? "다시 오셨네요" : "점주 회원가입") + '</h2><p class="mu">' + (lg ? "이메일과 비밀번호로 로그인하세요." : "매장 정보를 입력하고 시작하세요.") + "</p>" + form + '<div id="err" class="bad mu" style="margin-top:10px"></div><p class="mu" style="margin-top:14px">' + (lg ? '계정이 없나요? <button type="button" class="lnk" data-act="authTab" data-v="signup">회원가입</button>' : '이미 계정이 있나요? <button type="button" class="lnk" data-act="authTab" data-v="login">로그인</button>') + "</p></div></div>";
-}
 function render() {
-  document.getElementById("who").innerHTML = "";
-  document.getElementById("nav").innerHTML = [["dash", "대시보드"], ["stores", "매장 관리"], ["log", "소음 기록"]].map(function (t) { return '<button class="' + (tab === t[0] ? "on" : "") + '" data-act="tab" data-v="' + t[0] + '">' + t[1] + "</button>"; }).join("");
-  document.getElementById("app").innerHTML = tab === "dash" ? vDash() : tab === "stores" ? vStores() : vLog();
+  if (!me) return;
+  document.getElementById("who").innerHTML = esc(me.store_name || me.email) +
+    ' <a class="chip" href="../실시간 소음 측정기/index.html">소음 측정기</a> <a class="chip" href="../음악 플레이어/index.html">음악 플레이어</a> <button class="chip" data-act="logout">로그아웃</button>';
+  document.getElementById("nav").innerHTML = [["dash", "대시보드"], ["report", "시간대 리포트"], ["settings", "매장 설정"]].map(function (t) {
+    return '<button class="' + (tab === t[0] ? "on" : "") + '" data-act="tab" data-v="' + t[0] + '">' + t[1] + "</button>";
+  }).join("");
+  document.getElementById("app").innerHTML = tab === "dash" ? vDash() : tab === "report" ? vReport() : vSettings();
+}
+
+async function loadDash() {
+  var res = await Promise.allSettled([NoiseAPI.status(), NoiseAPI.report(tab === "dash" ? today() : day), NoiseAPI.statusLog(20)]);
+  if (res[0].status === "fulfilled") cache.status = res[0].value;
+  if (res[1].status === "fulfilled") cache.report = res[1].value;
+  if (res[2].status === "fulfilled") cache.logs = res[2].value;
+  var failed = res.filter(function (x) { return x.status === "rejected"; })[0];
+  render();
+  if (failed) document.getElementById("app").insertAdjacentHTML("afterbegin", errBox(failed.reason));
+}
+async function loadSettings() {
+  try {
+    var r = await Promise.all([NoiseAPI.getUser(), NoiseAPI.options()]);
+    cache.user = r[0]; cache.options = r[1];
+    render();
+  } catch (e) { render(); document.getElementById("app").insertAdjacentHTML("afterbegin", errBox(e)); }
+}
+function load() {
+  clearInterval(timer); timer = null;
+  if (tab === "settings") return loadSettings();
+  if (tab === "dash") timer = setInterval(loadDash, 5000);
+  return loadDash();
 }
 
 document.addEventListener("click", function (e) {
   var b = e.target.closest("[data-act]"); if (!b) return;
-  var a = b.dataset.act, v = b.dataset.v;
-  if (a === "pw") { var pi = b.parentNode.querySelector("input"); pi.type = pi.type === "password" ? "text" : "password"; return; }
-  if (a === "authTab") authTab = v;
-  else if (a === "logout") { me = null; authTab = "login"; try { localStorage.removeItem(SES); } catch (e) {} }
-  else if (a === "tab") tab = v;
-  else if (a === "fCat") fCat = v;
-  else if (a === "fStore") fStore = v;
-  else if (a === "delStore") { if (!confirm("매장과 해당 기록을 모두 삭제할까요?")) return; var id = +v; S.stores = S.stores.filter(function (s) { return s.id !== id; }); S.recs = S.recs.filter(function (r) { return r.sid !== id; }); fStore = "전체"; save(); }
-  else if (a === "delRec") { S.recs = S.recs.filter(function (r) { return r.id !== +v; }); save(); }
-  render();
+  var a = b.dataset.act;
+  if (a === "logout") { NoiseAPI.logout(true); return; }
+  if (a === "tab") { tab = b.dataset.v; cache.report = null; render(); load(); }
 });
 
-document.addEventListener("submit", function (e) {
+document.addEventListener("submit", async function (e) {
   e.preventDefault();
   var f = e.target, k = f.dataset.form, d = new FormData(f);
-  if (k === "login") { doLogin(d); return; }
-  if (k === "signup") { doSignup(d); return; }
-  if (k === "store") S.stores.push({ id: S.nid++, name: d.get("name").trim(), cat: d.get("cat") });
-  if (k === "cat") { var n = d.get("name").trim(); if (n && !(n in S.cats)) S.cats[n] = +d.get("lim"); }
-  if (k === "rec") S.recs.push({ id: S.rid++, sid: +d.get("sid"), db: +d.get("db"), t: new Date(d.get("t")).toISOString() });
-  save(); render();
+  if (k === "day") { day = d.get("day") || today(); cache.report = null; render(); load(); return; }
+  if (k === "store") {
+    var msg = document.getElementById("storeMsg");
+    try {
+      var u = await NoiseAPI.updateStore({
+        store_name: d.get("store_name").trim() || null, total_seats: Number(d.get("total_seats")) || 0,
+        category: d.get("category"), mood: d.get("mood"), age_group: d.get("age_group"),
+        gender: d.get("gender"), noise_strategy: d.get("noise_strategy"),
+      });
+      cache.user = u;
+      me.store_name = u.store_name;
+      try { localStorage.setItem("noiseai-user", JSON.stringify({ id: u.id, email: u.email, store_name: u.store_name })); } catch (er) {}
+      render();
+      document.getElementById("storeMsg").textContent = "저장했습니다. 다음에 만들어지는 곡부터 반영됩니다.";
+    } catch (er) { msg.textContent = er.message; msg.className = "bad"; }
+    return;
+  }
+  if (k === "sales") {
+    var sm = document.getElementById("salesMsg");
+    sm.className = "mu"; sm.textContent = "업로드 중…";
+    try {
+      var r = await NoiseAPI.uploadSales(d.get("file"));
+      sm.textContent = r.hours_saved + "개 시간대 저장 (새로 " + r.inserted + " · 갱신 " + r.updated + ")" + (r.error_count ? " · 건너뛴 행 " + r.error_count + "개" : "");
+      cache.report = await NoiseAPI.report(day);
+      var keep = sm.textContent;
+      render();
+      document.getElementById("salesMsg").textContent = keep;
+    } catch (er) { sm.className = "bad"; sm.textContent = er.message; }
+  }
 });
 
-render();
+if (me) { render(); load(); }
