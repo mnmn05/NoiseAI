@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>매장로그 · 로그인</title>
-<link rel="stylesheet" href="Style.css">
+<link rel="stylesheet" href="../로그인/Style.css">
 <script src="../common/api.js"></script>
 </head>
 <body>
 <main class="card">
-  <h1 class="brand">매장로그</h1>
+  <h1 class="brand">로그인</h1>
   <p class="desc" id="desc">점주 계정으로 로그인하세요.</p>
   <div class="tabs" role="tablist">
     <button class="on" id="tabLogin" role="tab" type="button">로그인</button>
-    <button id="tabSignup" role="tab" type="button">점주 회원가입</button>
+    <button id="tabSignup" role="tab" type="button">회원가입</button>
   </div>
 
   <section id="login">
@@ -34,11 +34,11 @@
     <input id="sPw" type="password" placeholder="8자 이상, 영문+숫자" autocomplete="new-password">
     <div class="err" id="sPwErr"></div>
 
-        <label for="sStore">매장 이름</label>
-    <input id="sStore" type="text" maxlength="100" placeholder="예: 모닝브루 본점">
-    <div class="err" id="sStoreErr"></div>
+    <label for="sStore">매장 이름</label>
+      <input id="sStore" type="text" maxlength="100" placeholder="예: 모닝브루 본점">
+      <div class="err" id="sStoreErr"></div>
     <label for="sSeats">좌석 수</label>
-    <input id="sSeats" type="number" min="0" max="1000" value="20">
+      <input id="sSeats" type="number" min="0" max="1000" value="20">
     <div class="err" id="sSeatsErr"></div>
 
     <div class="lbl">타겟 연령대</div>

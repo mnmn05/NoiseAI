@@ -47,7 +47,7 @@ function notify(t, isErr) {
 function busy(btn, on, label) { btn.disabled = on; btn.textContent = on ? "처리 중…" : label; }
 async function loginAndGo(email, pw) {
   await NoiseAPI.login(email, pw);
-  location.href = NoiseAPI.DASHBOARD_PAGE;
+  location.href = NoiseAPI.PLAYER_PAGE; 
 }
 
 $("loginBtn").onclick = async () => {

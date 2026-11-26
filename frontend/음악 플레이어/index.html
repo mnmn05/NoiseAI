@@ -9,6 +9,7 @@
 <script src="../common/api.js"></script>
 </head>
 <body>
+    <header class="top" id="top"></header>
 <main class="app">
 <section class="stage">
 <div class="disc" id="disc"><div class="label"></div></div>
@@ -28,6 +29,7 @@
 <div class="vol"><label for="vol">볼륨</label><input type="range" id="vol" min="0" max="100" value="80"></div>
 <ul id="list"></ul>
 <div class="vol"><label for="autovol">자동 볼륨</label><input type="checkbox" id="autovol" checked><span id="volinfo">매장 소음에 맞춰 서버가 볼륨을 정합니다</span></div>
+<div class="vol"><label>매장 소음</label><b id="ndb">--</b><span>dB</span><span id="nstate">로그인하면 자동으로 측정해요</span></div>
 <p id="srv" role="status"></p>
 <label class="add">내 음악 파일 추가<input type="file" id="file" accept="audio/*" multiple hidden></label>
 <p id="msg" role="status"></p>

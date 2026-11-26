@@ -179,8 +179,75 @@ async function pollVolume(){
     }
   }catch(e){volInfo('서버 볼륨을 못 받았어요: '+e.message)}
 }
+
+  // ================================================================ 자동 소음 측정 (T4)
+// 실시간 소음 측정기와 같은 계산식(RMS -> dB, 보정값 90)으로 마이크를 읽고 3초 평균을 서버로 보낸다.
+// 브라우저는 사용자가 화면을 한 번 누르기 전까지 오디오를 멈춰 두므로, 첫 터치(재생 버튼 등)에 측정이 시작된다.
+const MIC={ac:null,an:null,buf:null,stream:null,starting:false,smooth:null,sum:0,n:0,warm:0,last:0,sending:false,sent:0};
+const MIC_OFFSET=90,MIC_MIN=20,MIC_MAX=110,MIC_SEND_MS=3000;
+function nState(t,bad){const el=$('nstate');el.textContent=t;el.style.color=bad?'#c0392b':''}
+async function startMic(){
+  if(MIC.stream||MIC.starting)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){nState('이 브라우저는 마이크를 지원하지 않아요 (HTTPS 주소로 여세요)',true);return}
+  MIC.starting=true;nState('마이크 권한을 허용해 주세요');
+  try{
+    // echoCancellation: 스피커로 나가는 이 플레이어 음악이 다시 마이크로 잡히는 것을 줄인다
+    MIC.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
+  }catch(e){
+    MIC.starting=false;
+    nState(e&&e.name==='NotAllowedError'?'마이크 권한이 거부됐어요. 주소창의 사이트 설정에서 허용해 주세요':'마이크를 사용할 수 없어요',true);
+    return;
+  }
+  MIC.ac=new(window.AudioContext||window.webkitAudioContext)();
+  const s=MIC.ac.createMediaStreamSource(MIC.stream);
+  MIC.an=MIC.ac.createAnalyser();MIC.an.fftSize=2048;s.connect(MIC.an);
+  MIC.buf=new Float32Array(MIC.an.fftSize);
+  MIC.smooth=null;MIC.sum=0;MIC.n=0;MIC.warm=0;MIC.last=performance.now();MIC.starting=false;
+  if(MIC.ac.state==='suspended')MIC.ac.resume().catch(()=>{});
+  nState(MIC.ac.state==='running'?'측정 중':'화면을 한 번 누르면 측정을 시작해요');
+  setInterval(micTick,100);   // 화면이 가려져도 계속 돈다 (requestAnimationFrame 은 멈춤)
+}
+function micTick(){
+  if(!MIC.an||MIC.ac.state!=='running')return;
+  MIC.an.getFloatTimeDomainData(MIC.buf);
+  let s=0;for(let i=0;i<MIC.buf.length;i++)s+=MIC.buf[i]*MIC.buf[i];
+  const rms=Math.sqrt(s/MIC.buf.length);
+  const db=Math.min(MIC_MAX,Math.max(MIC_MIN,rms>1e-7?20*Math.log10(rms)+MIC_OFFSET:MIC_MIN));
+  if(MIC.smooth===null)MIC.smooth=db;
+  MIC.smooth+=(db-MIC.smooth)*(db>MIC.smooth?.98:.39);   // 올라갈 땐 빠르게, 내려갈 땐 천천히
+  $('ndb').textContent=Math.round(MIC.smooth);
+  if(++MIC.warm>10){MIC.sum+=MIC.smooth;MIC.n++}          // 처음 1초는 마이크 안정화 구간이라 버림
+  const now=performance.now();
+  if(now-MIC.last>=MIC_SEND_MS){MIC.last=now;micFlush()}
+}
+async function micFlush(){
+  if(!srv||MIC.sending||!MIC.n)return;
+  const avg=MIC.sum/MIC.n;MIC.sum=0;MIC.n=0;MIC.sending=true;
+  try{await API.sendNoise(avg);MIC.sent++;nState('측정 중 · 3초마다 서버로 전송 ('+MIC.sent+'회)')}
+  catch(e){nState('소음 전송 실패: '+e.message,true)}
+  finally{MIC.sending=false}
+}
+// 첫 터치/키 입력에서 멈춰 있던 오디오를 깨운다
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{
+  if(!srv)return;
+  if(!MIC.stream){startMic();return}
+  if(MIC.ac&&MIC.ac.state==='suspended')MIC.ac.resume().then(()=>nState('측정 중')).catch(()=>{});
+},true));
+
+function topBar(){
+  const el=$('top');
+  if(srv){
+    el.innerHTML='<span>'+String(srv.store_name||srv.email).replace(/</g,'&lt;')+'</span><a href="'+API.DASHBOARD_PAGE+'">대시보드</a><button type="button" id="logout">로그아웃</button>';
+    $('logout').onclick=()=>API.logout(true);
+  }else if(API){
+    el.innerHTML='<a href="'+API.LOGIN_PAGE+'">로그인</a>';
+  }
+}
+
 (async()=>{
-  if(srv){await loadBgm();pollVolume();setInterval(pollVolume,3000)}
+  topBar();
+  if(srv){startMic();await loadBgm();pollVolume();setInterval(pollVolume,3000)}
   else{srvMsg('로그인하면 매장 맞춤 AI 음악과 자동 볼륨이 켜져요');$('autovol').checked=false;$('autovol').disabled=true;volInfo('로그인 필요')}
+
   list();load(0,false);frame();
 })();

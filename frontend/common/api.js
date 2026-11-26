@@ -4,7 +4,8 @@
   var LOCAL_API = "http://localhost:8000";
   var K_BASE = "noiseai-api-base", K_TOKEN = "noiseai-token", K_USER = "noiseai-user";
   var LOGIN_PAGE = "../로그인/index.html";
-    var DASHBOARD_PAGE = "../매장로그_소음 관리/index.html";
+  var DASHBOARD_PAGE = "../매장로그_소음 관리/index.html";
+  var PLAYER_PAGE = "../음악 플레이어/index.html";
 
   function store(k, v) {
     try {
@@ -82,7 +83,7 @@
   window.NoiseAPI = {
     base: base, absUrl: absUrl, session: session, userId: userId, logout: logout, request: request,
     setBase: function (u) { store(K_BASE, u === null ? null : String(u).replace(/\/+$/, "")); return base(); },
-    LOGIN_PAGE: LOGIN_PAGE, DASHBOARD_PAGE: DASHBOARD_PAGE,
+    LOGIN_PAGE: LOGIN_PAGE, DASHBOARD_PAGE: DASHBOARD_PAGE, PLAYER_PAGE: PLAYER_PAGE,
     requireLogin: function () {
       var s = session();
       if (!s.token || !s.user) { location.href = LOGIN_PAGE; return null; }
